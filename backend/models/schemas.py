@@ -36,3 +36,29 @@ class RAGResponse(BaseModel):
     confidence: Confidence
     conflict_flag: bool = False
     error_type: Optional[str] = None
+# Add to backend/models/schemas.py
+
+from pydantic import BaseModel
+from typing import Optional
+
+class UploadResponse(BaseModel):
+    success: bool
+    session_id: Optional[str] = None
+    chunks_stored: Optional[int] = None
+    pages: Optional[int] = None
+    error_type: Optional[str] = None
+    message: str
+
+class ChatRequest(BaseModel):
+    session_id: str
+    question: str
+    state: str                    # "maharashtra" | "gujarat"
+
+class ChatResponse(BaseModel):
+    answer: str
+    legal_basis: str
+    lease_reference: Optional[str] = None
+    explanation: str
+    confidence: str
+    conflict_flag: bool
+    error_type: Optional[str] = None

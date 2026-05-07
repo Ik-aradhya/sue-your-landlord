@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     GROQ_API_KEY: str
-    LLM_MODEL: str = "llama3-70b-8192"
+    LLM_MODEL: str = "llama-3.3-70b-versatile" 
     EMBEDDING_MODEL: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     CHROMA_PATH: str = "./vectorstore"
     LAW_COLLECTION: str = "law_chunks"

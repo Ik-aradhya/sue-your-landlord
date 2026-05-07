@@ -164,3 +164,131 @@ def chunk_text(
         chunks.append(chunk)
 
     return {"chunks": chunks, "error_type": None}
+
+
+async def run_ingestion_pipeline(
+    file: UploadFile,
+    doc_type: DocType,
+    state: str = None
+) -> dict:
+    """
+    Full ingestion pipeline:
+    1. Validate PDF
+    2. Extract text
+    3. Chunk text
+    4. Create embeddings
+    5. Store in vector DB
+
+    Returns:
+        {
+            "success": bool,
+            "session_id": str | None,
+            "chunks_stored": int,
+            "error_type": str | None
+        }
+    """
+
+    # Generate session ID
+    session_id = str(uuid.uuid4())
+
+    # =========================
+    # STEP 1 — VALIDATE PDF
+    # =========================
+    validation = validate_pdf(file)
+
+    if not validation["is_valid"]:
+        return {
+            "success": False,
+            "session_id": None,
+            "chunks_stored": 0,
+            "error_type": validation["error_type"]
+        }
+
+    # =========================
+    # STEP 2 — EXTRACT TEXT
+    # =========================
+    extracted = extract_text(file, doc_type)
+
+    if extracted["error_type"]:
+        return {
+            "success": False,
+            "session_id": None,
+            "chunks_stored": 0,
+            "error_type": extracted["error_type"]
+        }
+
+    # =========================
+    # STEP 3 — CHUNK TEXT
+    # =========================
+    chunked = chunk_text(
+        text=extracted["text"],
+        doc_type=doc_type,
+        state=state,
+        session_id=session_id
+    )
+
+    if chunked["error_type"]:
+        return {
+            "success": False,
+            "session_id": None,
+            "chunks_stored": 0,
+            "error_type": chunked["error_type"]
+        }
+
+    chunks = chunked["chunks"]
+
+    # =========================
+    # STEP 4 — STORE EMBEDDINGS
+    # =========================
+    try:
+        collection = get_law_collection()
+        documents = [chunk.text for chunk in chunks]
+        embeddings = [
+    get_embedding(doc)
+    for doc in documents
+]
+        
+        # embedding_model = get_embedding()
+
+        # documents = [chunk.text for chunk in chunks]
+
+        # embeddings = embedding_model.embed_documents(documents)
+
+        ids = [chunk.chunk_id for chunk in chunks]
+
+        metadatas = [
+            {
+                "source": chunk.source.value,
+                "section": chunk.section,
+                "state": chunk.state,
+                "session_id": chunk.session_id,
+                "start_index": chunk.start_index,
+                "end_index": chunk.end_index
+            }
+            for chunk in chunks
+        ]
+
+        collection.add(
+            ids=ids,
+            documents=documents,
+            embeddings=embeddings,
+            metadatas=metadatas
+        )
+
+    except Exception as e:
+        return {
+            "success": False,
+            "session_id": None,
+            "chunks_stored": 0,
+            "error_type": f"VECTOR_DB_ERROR: {str(e)}"
+        }
+
+    # =========================
+    # SUCCESS
+    # =========================
+    return {
+        "success": True,
+        "session_id": session_id,
+        "chunks_stored": len(chunks),
+        "error_type": None
+    }

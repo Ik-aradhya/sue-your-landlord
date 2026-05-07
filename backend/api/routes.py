@@ -1,0 +1,120 @@
+import uuid
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from backend.rag.ingest import run_ingestion_pipeline
+from backend.rag.chain import run_rag_chain
+from backend.models.schemas import (
+    DocType, ChatRequest, ChatResponse, UploadResponse
+)
+
+router = APIRouter()
+
+
+@router.post("/upload", response_model=UploadResponse)
+async def upload_lease(
+    file: UploadFile = File(...),
+    state: str = Form(...)
+):
+    """
+    Receives a lease PDF and state selection.
+    Runs the full ingestion pipeline.
+    Returns a session_id the client uses for all subsequent chat requests.
+    """
+
+    # Validate state selection
+    valid_states = ["maharashtra", "gujarat"]
+    if state.lower() not in valid_states:
+        raise HTTPException(
+            status_code=400,
+            detail=f"State must be one of: {valid_states}"
+        )
+
+    # Generate session ID — ties this lease to this user's session
+    # session_id = str(uuid.uuid4())
+
+    # # Run ingestion pipeline
+    # result = run_ingestion_pipeline(
+    #     file=file,
+    #     doc_type=DocType.LEASE,
+    #     state=state.lower(),
+    #     session_id=session_id
+    # )
+    result = await run_ingestion_pipeline(
+    file=file,
+    doc_type=DocType.LEASE,
+    state=state.lower()
+)
+    
+
+    if not result["success"]:
+        return UploadResponse(
+            success=False,
+            error_type=result["error_type"],
+            message=_error_message(result["error_type"])
+        )
+
+    return UploadResponse(
+        success=True,
+        # session_id=session_id,
+        chunks_stored=result["chunks_stored"],
+        pages=result["pages"],
+        error_type=None,
+        message=f"Lease uploaded successfully. {result['chunks_stored']} sections indexed."
+    )
+
+
+@router.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest):
+    """
+    Receives a question + session_id + state.
+    Runs the full RAG chain.
+    Returns a structured legal answer with citations.
+    """
+
+    # Validate question
+    if not request.question or len(request.question.strip()) < 5:
+        raise HTTPException(
+            status_code=400,
+            detail="Question is too short. Please ask a complete question."
+        )
+
+    # Validate state
+    valid_states = ["maharashtra", "gujarat"]
+    if request.state.lower() not in valid_states:
+        raise HTTPException(
+            status_code=400,
+            detail=f"State must be one of: {valid_states}"
+        )
+
+    # Run RAG chain
+    response = run_rag_chain(
+        question=request.question.strip(),
+        state=request.state.lower(),
+        session_id=request.session_id
+    )
+
+    return ChatResponse(
+        answer=response.answer,
+        legal_basis=response.legal_basis,
+        lease_reference=response.lease_reference,
+        explanation=response.explanation,
+        confidence=response.confidence.value,
+        conflict_flag=response.conflict_flag,
+        error_type=response.error_type
+    )
+
+
+def _error_message(error_type: str) -> str:
+    """
+    Converts internal error codes into user-friendly messages.
+    Never expose raw error codes to the user.
+    """
+    messages = {
+        "FILE_TOO_LARGE":   "Your file exceeds the 10MB limit. Please upload a smaller PDF.",
+        "INVALID_FILE_TYPE":"Only PDF files are accepted.",
+        "NON_TEXT_PDF":     "Your PDF appears to be scanned. Please upload a text-based PDF.",
+        "PARSE_ERROR":      "We could not read your PDF. It may be corrupted.",
+        "EMPTY_TEXT":       "No readable text was found in your PDF.",
+        "NO_CHUNKS_CREATED":"Your document was too short to process.",
+        "STORAGE_FAILED":   "We could not store your document. Please try again.",
+    }
+    return messages.get(error_type, "Something went wrong. Please try again.")
