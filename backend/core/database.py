@@ -16,3 +16,11 @@ def get_law_collection():
         metadata={"hnsw:space": "cosine"}
     )
     return collection
+
+def get_lease_collection():
+    """Returns the lease chunks collection from ChromaDB."""
+    collection = _chroma_client.get_or_create_collection(
+        name="lease_chunks",
+        metadata={"hnsw:space": "cosine"}
+    )
+    return collection
