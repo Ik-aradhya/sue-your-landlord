@@ -3,8 +3,9 @@ from fastapi import UploadFile
 from backend.core.config import settings
 from backend.models.schemas import Chunk, DocType
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from backend.core.database import get_law_collection, get_embedding
+
 import uuid
+from backend.core.database import get_law_collection, get_lease_collection, get_embedding
 
 MAX_BYTES = settings.MAX_FILE_SIZE_MB * 1024 * 1024  # 10MB in bytes
 
@@ -19,7 +20,7 @@ def validate_pdf(file: UploadFile) -> dict:
     file.file.seek(0, 2)           # seek to end of file
     size = file.file.tell()        # get position = file size in bytes
     file.file.seek(0)              # reset to beginning for later use
-    
+
     if size > MAX_BYTES:
         return {"is_valid": False, "error_type": "FILE_TOO_LARGE"}
 
@@ -45,13 +46,14 @@ def validate_pdf(file: UploadFile) -> dict:
 
     return {"is_valid": True, "error_type": None}
 
+
 def extract_text(file: UploadFile, doc_type: DocType) -> dict:
     """
     Extracts clean text from a validated PDF.
-    
+
     Input:  validated UploadFile, doc_type (law or lease)
     Output: { text, page_count, doc_type, error_type }
-    
+
     Guarantee: if error_type is None → text is safe to chunk.
     """
     try:
@@ -98,6 +100,7 @@ def extract_text(file: UploadFile, doc_type: DocType) -> dict:
             "error_type": "PARSE_ERROR"
         }
 
+
 # Chunk configuration per document type
 CHUNK_CONFIG = {
     DocType.LAW: {
@@ -109,6 +112,7 @@ CHUNK_CONFIG = {
         "chunk_overlap": 30
     }
 }
+
 
 def chunk_text(
     text: str,
@@ -169,7 +173,8 @@ def chunk_text(
 async def run_ingestion_pipeline(
     file: UploadFile,
     doc_type: DocType,
-    state: str = None
+    state: str = None,
+    session_id: str = None        # FIX 3 — received from route, not generated here
 ) -> dict:
     """
     Full ingestion pipeline:
@@ -187,9 +192,6 @@ async def run_ingestion_pipeline(
             "error_type": str | None
         }
     """
-
-    # Generate session ID
-    session_id = str(uuid.uuid4())
 
     # =========================
     # STEP 1 — VALIDATE PDF
@@ -220,11 +222,19 @@ async def run_ingestion_pipeline(
     # =========================
     # STEP 3 — CHUNK TEXT
     # =========================
+    # FIX 4 — pass section_hint so citations are meaningful
+    section_hint = (
+    "Maharashtra Rent Control Act, 1999" if (doc_type == DocType.LAW and state == "maharashtra")
+    else "Gujarat Rent Control Act, 1999" if (doc_type == DocType.LAW and state == "gujarat")
+    else "Lease Document"
+)
+
     chunked = chunk_text(
         text=extracted["text"],
         doc_type=doc_type,
         state=state,
-        session_id=session_id
+        session_id=session_id,
+        section_hint=section_hint
     )
 
     if chunked["error_type"]:
@@ -241,32 +251,26 @@ async def run_ingestion_pipeline(
     # STEP 4 — STORE EMBEDDINGS
     # =========================
     try:
-        collection = get_law_collection()
+        # FIX 1 — use correct collection based on doc_type
+        if doc_type == DocType.LAW:
+            collection = get_law_collection()
+        else:
+            collection = get_lease_collection()
+
         documents = [chunk.text for chunk in chunks]
-        embeddings = [
-    get_embedding(doc)
-    for doc in documents
-]
-        
-        # embedding_model = get_embedding()
-
-        # documents = [chunk.text for chunk in chunks]
-
-        # embeddings = embedding_model.embed_documents(documents)
+        embeddings = [get_embedding(doc) for doc in documents]
 
         ids = [chunk.chunk_id for chunk in chunks]
 
-        metadatas = [
-            {
-                "source": chunk.source.value,
-                "section": chunk.section,
-                "state": chunk.state,
-                "session_id": chunk.session_id,
-                "start_index": chunk.start_index,
-                "end_index": chunk.end_index
-            }
-            for chunk in chunks
-        ]
+        # FIX 2 — convert None values to empty string for ChromaDB
+        metadatas = [{
+            "source":      chunk.source.value,
+            "section":     chunk.section or "",
+            "state":       chunk.state or "",
+            "session_id":  chunk.session_id or "",
+            "start_index": chunk.start_index,
+            "end_index":   chunk.end_index
+        } for chunk in chunks]
 
         collection.add(
             ids=ids,
@@ -290,5 +294,6 @@ async def run_ingestion_pipeline(
         "success": True,
         "session_id": session_id,
         "chunks_stored": len(chunks),
+        "pages": extracted["page_count"],
         "error_type": None
     }

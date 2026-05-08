@@ -28,22 +28,16 @@ async def upload_lease(
             detail=f"State must be one of: {valid_states}"
         )
 
-    # Generate session ID — ties this lease to this user's session
-    # session_id = str(uuid.uuid4())
+    # FIX 3 — session_id generated ONCE here and passed into the pipeline
+    session_id = str(uuid.uuid4())
 
-    # # Run ingestion pipeline
-    # result = run_ingestion_pipeline(
-    #     file=file,
-    #     doc_type=DocType.LEASE,
-    #     state=state.lower(),
-    #     session_id=session_id
-    # )
+    # FIX 5 — await the async pipeline call, pass session_id in
     result = await run_ingestion_pipeline(
-    file=file,
-    doc_type=DocType.LEASE,
-    state=state.lower()
-)
-    
+        file=file,
+        doc_type=DocType.LEASE,
+        state=state.lower(),
+        session_id=session_id
+    )
 
     if not result["success"]:
         return UploadResponse(
@@ -54,7 +48,7 @@ async def upload_lease(
 
     return UploadResponse(
         success=True,
-        # session_id=session_id,
+        session_id=session_id,          # FIX 3 — return the same session_id to frontend
         chunks_stored=result["chunks_stored"],
         pages=result["pages"],
         error_type=None,
@@ -109,12 +103,12 @@ def _error_message(error_type: str) -> str:
     Never expose raw error codes to the user.
     """
     messages = {
-        "FILE_TOO_LARGE":   "Your file exceeds the 10MB limit. Please upload a smaller PDF.",
-        "INVALID_FILE_TYPE":"Only PDF files are accepted.",
-        "NON_TEXT_PDF":     "Your PDF appears to be scanned. Please upload a text-based PDF.",
-        "PARSE_ERROR":      "We could not read your PDF. It may be corrupted.",
-        "EMPTY_TEXT":       "No readable text was found in your PDF.",
-        "NO_CHUNKS_CREATED":"Your document was too short to process.",
-        "STORAGE_FAILED":   "We could not store your document. Please try again.",
+        "FILE_TOO_LARGE":    "Your file exceeds the 10MB limit. Please upload a smaller PDF.",
+        "INVALID_FILE_TYPE": "Only PDF files are accepted.",
+        "NON_TEXT_PDF":      "Your PDF appears to be scanned. Please upload a text-based PDF.",
+        "PARSE_ERROR":       "We could not read your PDF. It may be corrupted.",
+        "EMPTY_TEXT":        "No readable text was found in your PDF.",
+        "NO_CHUNKS_CREATED": "Your document was too short to process.",
+        "STORAGE_FAILED":    "We could not store your document. Please try again.",
     }
     return messages.get(error_type, "Something went wrong. Please try again.")

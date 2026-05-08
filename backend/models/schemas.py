@@ -1,6 +1,8 @@
 from pydantic import BaseModel
 from typing import Optional
 from enum import Enum
+from typing import List
+
 
 class DocType(str, Enum):
     LAW = "law"
@@ -36,10 +38,6 @@ class RAGResponse(BaseModel):
     confidence: Confidence
     conflict_flag: bool = False
     error_type: Optional[str] = None
-# Add to backend/models/schemas.py
-
-from pydantic import BaseModel
-from typing import Optional
 
 class UploadResponse(BaseModel):
     success: bool
@@ -47,7 +45,7 @@ class UploadResponse(BaseModel):
     chunks_stored: Optional[int] = None
     pages: Optional[int] = None
     error_type: Optional[str] = None
-    message: str
+    message:Optional[str] = None
 
 class ChatRequest(BaseModel):
     session_id: str
@@ -59,6 +57,6 @@ class ChatResponse(BaseModel):
     legal_basis: str
     lease_reference: Optional[str] = None
     explanation: str
-    confidence: str
+    confidence: Confidence
     conflict_flag: bool
     error_type: Optional[str] = None
