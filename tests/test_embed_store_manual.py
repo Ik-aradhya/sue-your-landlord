@@ -1,15 +1,15 @@
-# test_embed_store_manual.py — fixed
+# tests/test_embed_store_manual.py
 import sys
 sys.path.append(".")
 
-import io
 import asyncio
+import io
 from unittest.mock import MagicMock
+
 from backend.rag.ingest import run_ingestion_pipeline
-from backend.rag.chain import run_rag_chain
+from backend.core.database import get_law_collection, get_embedding
 from backend.models.schemas import DocType
-from backend.core.database import get_lease_collection
-import uuid
+
 
 def make_upload_file(path):
     with open(path, "rb") as f:
@@ -19,25 +19,20 @@ def make_upload_file(path):
     mock.file = io.BytesIO(raw)
     return mock
 
+
 async def run_test():
-    print("\n" + "="*50)
-    print("TEST — Full lease pipeline")
-    print("="*50)
+    print("\n" + "=" * 50)
+    print("TEST — Full ingestion pipeline")
+    print("=" * 50)
 
-    # ✅ Use a real UUID like the route does
-    session_id = str(uuid.uuid4())
-    print(f"Session ID: {session_id}")
+    PDF_PATH = "data/laws/maharashtra_rent_act.pdf"  # exact filename
+    file = make_upload_file(PDF_PATH)
 
-    LEASE_PATH = "data/uploads/priya_lease.pdf"  # ← your lease PDF
-    file = make_upload_file(LEASE_PATH)
-
-    # Step 1 — Ingest lease (not law!)
-    print("\nIngesting lease...")
+    print("\nRunning pipeline...")
     result = await run_ingestion_pipeline(
         file=file,
-        doc_type=DocType.LEASE,          # ← LEASE not LAW
-        state="maharashtra",
-        session_id=session_id            # ← real UUID
+        doc_type=DocType.LAW,  # NOT DocType.LEASE
+        state="maharashtra",  # not None
     )
 
     print(f"Success       : {result['success']}")
@@ -45,31 +40,31 @@ async def run_test():
         print(f"Error         : {result['error_type']}")
         return
 
+    print(f"Pages parsed  : {result['pages']}")
     print(f"Chunks stored : {result['chunks_stored']}")
 
-    # Step 2 — Verify chunks are in ChromaDB under correct session_id
-    print("\n--- Verifying ChromaDB ---")
-    collection = get_lease_collection()
-    stored = collection.get(
-        where={"session_id": session_id},
-        include=["documents", "metadatas"]
-    )
-    print(f"Chunks found for session: {len(stored['documents'])}")
-    if stored["documents"]:
-        print(f"Sample chunk : {stored['documents'][0][:200]}")
-        print(f"Metadata     : {stored['metadatas'][0]}")
+    print("\n--- Querying ChromaDB to verify storage ---")
+    collection = get_law_collection()
+    count = collection.count()
+    print(f"Total vectors in law_chunks: {count}")
 
-    # Step 3 — Run full RAG chain with same session_id
-    print("\n--- Running RAG chain ---")
-    response = run_rag_chain(
-        question="Can the landlord increase rent during the lease?",
-        state="maharashtra",
-        session_id=session_id            # ← same UUID passed to chat
+    test_question = "Can a landlord increase rent during a lease?"
+    query_vector = get_embedding(test_question)
+
+    results = collection.query(
+        query_embeddings=[query_vector],
+        where={"state": "maharashtra"},
+        n_results=3,
     )
 
-    print(f"Answer      : {response.answer}")
-    print(f"Confidence  : {response.confidence}")
-    print(f"Lease ref   : {response.lease_reference}")
+    print(f"\nTop 3 results for: '{test_question}'")
+    for i, doc in enumerate(results["documents"][0]):
+        distance = results["distances"][0][i]
+        print(f"\nResult {i+1} (distance: {distance:.4f}):")
+        print(doc[:200])
+
+    print("\nTEST COMPLETE")
+
 
 if __name__ == "__main__":
     asyncio.run(run_test())

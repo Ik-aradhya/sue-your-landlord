@@ -1,3 +1,5 @@
+from typing import Optional
+
 from backend.core.database import get_law_collection, get_lease_collection, get_embedding
 from backend.core.config import settings
 from backend.models.schemas import Chunk, RetrievedContext, Confidence, DocType
@@ -76,7 +78,7 @@ def retrieve_chunks(
                 "error_type": "LAW_COLLECTION_EMPTY"
             }
 
-        n_results_law = min(settings.TOP_K_LAW, law_count)
+        n_results_law = max(1, min(settings.TOP_K_LAW, law_count))
 
         query_kwargs = {
             "query_embeddings": [query_vector],
@@ -150,7 +152,8 @@ def retrieve_chunks(
                 actual_count = len(session_matches["documents"])
 
                 if actual_count > 0:
-                    n_results_lease = min(settings.TOP_K_LEASE, actual_count)
+                    # Chroma rejects n_results=0; misconfigured TOP_K_LEASE must not empty lease silently
+                    n_results_lease = max(1, min(settings.TOP_K_LEASE, actual_count))
 
                     lease_results = lease_collection.query(
                         query_embeddings=[query_vector],
@@ -247,13 +250,17 @@ def compute_confidence(
 def run_retrieval(
     question: str,
     state: str,
-    session_id: str
+    session_id: str,
+    retrieval_query: Optional[str] = None,
 ) -> dict:
     """
     Master function: runs the full retrieval pipeline.
     embed → retrieve → score confidence
 
     This is the only function chain.py needs to call.
+
+    If retrieval_query is set, it is used for embedding only (e.g. history-augmented
+    query). The user's literal question is still passed separately for prompting.
 
     Output: {
         context: RetrievedContext | None,
@@ -262,8 +269,12 @@ def run_retrieval(
     }
     """
 
-    # Stage 1 — Embed the question
-    embedding_result = embed_query(question)
+    # Stage 1 — Embed for vector search (optional context-augmented string)
+    embed_text = (retrieval_query if retrieval_query is not None else question).strip()
+    if len(embed_text) > 500:
+        embed_text = embed_text[-500:].strip()
+
+    embedding_result = embed_query(embed_text)
     if embedding_result["error_type"]:
         return {
             "context": None,

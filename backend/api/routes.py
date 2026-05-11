@@ -79,11 +79,11 @@ async def chat(request: ChatRequest):
             detail=f"State must be one of: {valid_states}"
         )
 
-    # Run RAG chain
+    # Run RAG chain (strip session_id so Chroma where-clause matches ingested UUIDs)
     response = run_rag_chain(
         question=request.question.strip(),
         state=request.state.lower(),
-        session_id=request.session_id
+        session_id=request.session_id.strip(),
     )
 
     return ChatResponse(

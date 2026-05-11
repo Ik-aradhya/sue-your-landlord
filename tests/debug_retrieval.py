@@ -19,3 +19,5 @@ for i, doc in enumerate(results["documents"][0]):
     print(f"\n--- Chunk {i+1} (distance: {distance:.4f}) ---")
     print(f"Section: {meta.get('section')}")
     print(f"Text: {doc[:300]}")
+
+    

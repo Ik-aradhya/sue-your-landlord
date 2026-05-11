@@ -1,9 +1,11 @@
 import os
 import re
+from typing import Optional
 from langchain_groq import ChatGroq
 from backend.core.config import settings
+from backend.core.session_store import session_store
 from backend.models.schemas import RAGResponse, Confidence
-from backend.rag.prompts import build_prompt
+from backend.rag.prompts import build_prompt, build_retrieval_query
 from backend.rag.retriever import run_retrieval
 
 # Initialise LLM once at module level
@@ -89,11 +91,14 @@ def format_response(
         "one would need to refer",
         "does not explicitly",
         "may be entitled",
+        "might be able to",
         "under certain conditions",
         "it depends",
         "cannot be determined",
         "unclear",
         "ambiguous",
+        "possibly",
+        "perhaps",
     ]
 
     answer_lower = answer.lower()
@@ -136,7 +141,8 @@ def fallback_response(reason: str = "") -> RAGResponse:
 def run_rag_chain(
     question: str,
     state: str,
-    session_id: str
+    session_id: str,
+    history: Optional[list] = None,
 ) -> RAGResponse:
     """
     Master function — runs the complete RAG pipeline.
@@ -146,11 +152,16 @@ def run_rag_chain(
     This is the only function the API route needs to call.
     """
 
-    # Stage 1 — Retrieve relevant chunks
+    if history is None:
+        history = session_store.get_history(session_id)
+
+    retrieval_query = build_retrieval_query(question, history)
+
+    # Stage 1 — Retrieve (embedding uses rewritten / history-augmented query)
     retrieval = run_retrieval(
-        question=question,
+        question=retrieval_query,
         state=state,
-        session_id=session_id
+        session_id=session_id,
     )
 
     if retrieval["error_type"]:
@@ -163,11 +174,13 @@ def run_rag_chain(
 
     context = retrieval["context"]
 
-    # Stage 3 — Build prompt
+    # Stage 3 — Build prompt (jurisdiction + conversation history in user message)
     messages = build_prompt(
         question=question,
         law_chunks=context.law_chunks,
-        lease_chunks=context.lease_chunks
+        lease_chunks=context.lease_chunks,
+        state=state,
+        history=history,
     )
 
     # Stage 4 — Call LLM
@@ -176,7 +189,20 @@ def run_rag_chain(
         return fallback_response(llm_result["error_type"])
 
     # Stage 5 — Format and return structured response
-    return format_response(
+    parsed = format_response(
         llm_output=llm_result["llm_output"],
         confidence=context.confidence
     )
+
+    session_store.append_turn(
+        session_id=session_id,
+        question=question,
+        answer=parsed.answer,
+        metadata={
+            "confidence": parsed.confidence.value,
+            "conflict_flag": parsed.conflict_flag,
+            "state": state,
+        },
+    )
+
+    return parsed

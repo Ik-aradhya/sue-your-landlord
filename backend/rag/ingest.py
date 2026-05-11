@@ -1,4 +1,6 @@
 import re
+from typing import Optional
+
 import fitz                        # PyMuPDF
 from fastapi import UploadFile
 from backend.core.config import settings
@@ -16,6 +18,62 @@ MAX_BYTES = settings.MAX_FILE_SIZE_MB * 1024 * 1024  # 10MB in bytes
 # Previously: one hardcoded section_hint applied to ALL chunks
 # Now: each chunk gets its own section extracted from its actual text
 # =============================================================================
+
+def _law_act_title(state: Optional[str]) -> str:
+    s = (state or "").lower()
+    if s == "maharashtra":
+        return "Maharashtra Rent Control Act, 1999"
+    if s == "gujarat":
+        return "Gujarat Rent Control Act, 1999"
+    return "Rent Control Act"
+
+
+def _normalize_statute_text(t: str) -> str:
+    """Collapse odd PDF whitespace so section headings match reliably."""
+    if not t:
+        return ""
+    t = t.replace("\u00a0", " ").replace("\u2009", " ").replace("\u2007", " ").replace("\u202f", " ")
+    t = re.sub(r"[ \t\r\f\v]+", " ", t)
+    return t
+
+
+# Patterns return group(1) = section number (Arabic digits, optional letter suffix)
+_LAW_SECTION_NUMBER_PATTERNS: tuple[str, ...] = (
+    r"(?i)\bSection\s+(\d+[A-Z]?)\b",
+    r"(?i)\bSections\s+(\d+[A-Z]?)\b",
+    r"(?i)\bSec\.?\s*(\d+[A-Z]?)\b",
+    r"(?i)§\s*(\d+[A-Z]?)\b",
+    r"(?i)\bS\.\s*(\d+[A-Z]?)\b",
+    r"(?i)\bunder\s+section\s+(\d+[A-Z]?)\b",
+    r"(?i)\bsection\s*[:\-–]\s*(\d+[A-Z]?)\b",
+)
+
+
+def find_last_law_section_citation_in_text(text: str, state: Optional[str]) -> Optional[str]:
+    """
+    Rightmost section marker in `text` wins (handles multi-section chunks).
+    Returns '…Act…, Section N' or None.
+    """
+    if not text or not text.strip():
+        return None
+    act = _law_act_title(state)
+    norm = _normalize_statute_text(text)
+    best_end = -1
+    best_num: Optional[str] = None
+    for pat in _LAW_SECTION_NUMBER_PATTERNS:
+        for m in re.finditer(pat, norm):
+            if m.end() > best_end:
+                best_end = m.end()
+                best_num = m.group(1)
+    if not best_num:
+        return None
+    return f"{act}, Section {best_num}"
+
+
+def find_law_section_citation(text: str, state: Optional[str]) -> Optional[str]:
+    """Backward-compatible name: last section citation in this string."""
+    return find_last_law_section_citation_in_text(text, state)
+
 
 def extract_section_from_chunk(text: str, doc_type: DocType, state: str = None) -> str:
     """
@@ -36,28 +94,10 @@ def extract_section_from_chunk(text: str, doc_type: DocType, state: str = None) 
         return "Lease Document"
 
     if doc_type == DocType.LAW:
-        # Match: "Section 12", "Section 12A", with optional title
-        match = re.search(
-            r'[Ss]ection\s+(\d+[A-Z]?)\s*[.\-–]?\s*([^\n]{0,60})', text
-        )
-        if match:
-            sec_num = match.group(1)
-            sec_title = match.group(2).strip().rstrip('.,') if match.group(2) else ""
-
-            if state == "maharashtra":
-                act = "Maharashtra Rent Control Act, 1999"
-            elif state == "gujarat":
-                act = "Gujarat Rent Control Act, 1999"
-            else:
-                act = "Rent Control Act"
-
-            return f"{act}, Section {sec_num}" + (f" - {sec_title}" if sec_title else "")
-
-        # Fallback: at least return the Act name (better than "Unknown Section")
-        if state == "maharashtra":
-            return "Maharashtra Rent Control Act, 1999"
-        elif state == "gujarat":
-            return "Gujarat Rent Control Act, 1999"
+        found = find_last_law_section_citation_in_text(text, state)
+        if found:
+            return found
+        return _law_act_title(state)
 
     return "Unknown Section"
 
@@ -164,6 +204,10 @@ def extract_text(file: UploadFile, doc_type: DocType) -> dict:
 # CHUNKING
 # =============================================================================
 
+# How far back (in chars) to search for a section heading when the chunk body
+# does not contain "Section N" — fixes splits where the heading sits in prior text.
+LAW_SECTION_LOOKBACK_CHARS = 15_000
+
 CHUNK_CONFIG = {
     DocType.LAW: {
         "chunk_size": 512,
@@ -213,14 +257,30 @@ def chunk_text(
 
     chunks = []
     position = 0
+    # Law PDFs often put "Section N" in a heading chunk; body chunks need the same label.
+    last_law_section: Optional[str] = None
 
     for i, chunk_text_content in enumerate(raw_chunks):
         start = text.find(chunk_text_content, position)
         end = start + len(chunk_text_content)
         position = max(0, end - config["chunk_overlap"])
 
-        # FIX 2 — extract section from THIS chunk's own text, not a global hint
-        section = extract_section_from_chunk(chunk_text_content, doc_type, state)
+        if doc_type == DocType.LAW:
+            window = text[max(0, end - LAW_SECTION_LOOKBACK_CHARS) : end]
+            from_chunk = find_last_law_section_citation_in_text(chunk_text_content, state)
+            from_window = find_last_law_section_citation_in_text(window, state)
+            if from_chunk:
+                last_law_section = from_chunk
+                section = from_chunk
+            elif from_window:
+                last_law_section = from_window
+                section = from_window
+            elif last_law_section:
+                section = last_law_section
+            else:
+                section = _law_act_title(state)
+        else:
+            section = extract_section_from_chunk(chunk_text_content, doc_type, state)
 
         chunk = Chunk(
             chunk_id=str(uuid.uuid4()),
