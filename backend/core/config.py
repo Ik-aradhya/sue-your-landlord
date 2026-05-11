@@ -11,8 +11,8 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE_MB: int = 10
     TOP_K_LAW: int = 5
     TOP_K_LEASE: int = 3
-    CONFIDENCE_STRONG: float = 0.25   # distance threshold
-    CONFIDENCE_WEAK: float = 0.50
+    CONFIDENCE_STRONG: float = 0.40   # distance threshold
+    CONFIDENCE_WEAK: float = 0.65
 
     class Config:
         env_file = ".env"

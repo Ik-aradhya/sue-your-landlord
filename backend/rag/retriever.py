@@ -2,6 +2,7 @@ from backend.core.database import get_law_collection, get_lease_collection, get_
 from backend.core.config import settings
 from backend.models.schemas import Chunk, RetrievedContext, Confidence, DocType
 
+
 def embed_query(question: str) -> dict:
     """
     Converts user question into a query vector.
@@ -37,6 +38,8 @@ def embed_query(question: str) -> dict:
             "query_vector": None,
             "error_type": f"EMBEDDING_FAILED: {str(e)}"
         }
+
+
 def retrieve_chunks(
     query_vector: list[float],
     state: str,
@@ -62,14 +65,27 @@ def retrieve_chunks(
     try:
         law_collection = get_law_collection()
 
+        # FIX — clamp n_results to actual collection size to avoid ChromaDB crash
+        law_count = law_collection.count()
+        if law_count == 0:
+            return {
+                "law_chunks": [],
+                "lease_chunks": [],
+                "law_score": 1.0,
+                "lease_score": 1.0,
+                "error_type": "LAW_COLLECTION_EMPTY"
+            }
+
+        n_results_law = min(settings.TOP_K_LAW, law_count)
+
         query_kwargs = {
             "query_embeddings": [query_vector],
-            "n_results": settings.TOP_K_LAW,
+            "n_results": n_results_law,
             "include": ["documents", "metadatas", "distances"]
         }
         if state:
             query_kwargs["where"] = {"state": state}
-            
+
         law_results = law_collection.query(**query_kwargs)
 
         # ChromaDB returns nested lists — [0] unwraps the first query
@@ -106,37 +122,65 @@ def retrieve_chunks(
     # ── Step 2: Query lease collection ───────────────────────────
     try:
         lease_collection = get_lease_collection()
+        
+        # --- DEBUG CHECK ---
+        all_lease = lease_collection.get(include=["metadatas"])
+        print(f"\n[DEBUG] INCOMING session_id from /chat: {session_id}")
+        print(f"[DEBUG] All session_ids in lease collection (showing up to 10):")
+        unique_sessions = set()
+        if all_lease and "metadatas" in all_lease and all_lease["metadatas"]:
+            for m in all_lease["metadatas"]:
+                if m:
+                    unique_sessions.add(m.get("session_id"))
+        for s in list(unique_sessions)[:10]:
+            print(f"  → {s}")
+        print("--------------------------------------------------\n")
 
         if session_id:
-            lease_results = lease_collection.query(
-                query_embeddings=[query_vector],
-                where={"session_id": session_id},
-                n_results=settings.TOP_K_LEASE,
-                include=["documents", "metadatas", "distances"]
-            )
+            # FIX — count only chunks belonging to this session before querying
+            # ChromaDB crashes if n_results > number of matching documents
+            session_count = lease_collection.count()
 
-            for i, doc in enumerate(lease_results["documents"][0]):
-                metadata = lease_results["metadatas"][0][i] or {}
-                distance = lease_results["distances"][0][i]
-
-                chunk = Chunk(
-                    chunk_id=f"lease_{i}",
-                    text=doc,
-                    source=DocType.LEASE,
-                    section=metadata.get("section", "Lease Clause"),
-                    state=None,
-                    session_id=session_id,
-                    start_index=0,
-                    end_index=len(doc)
+            if session_count > 0:
+                # Get actual count for this session_id
+                session_matches = lease_collection.get(
+                    where={"session_id": session_id},
+                    include=["documents"]
                 )
-                lease_chunks.append(chunk)
+                actual_count = len(session_matches["documents"])
 
-            if lease_results["distances"][0]:
-                lease_score = min(lease_results["distances"][0])
+                if actual_count > 0:
+                    n_results_lease = min(settings.TOP_K_LEASE, actual_count)
+
+                    lease_results = lease_collection.query(
+                        query_embeddings=[query_vector],
+                        where={"session_id": session_id},
+                        n_results=n_results_lease,
+                        include=["documents", "metadatas", "distances"]
+                    )
+
+                    for i, doc in enumerate(lease_results["documents"][0]):
+                        metadata = lease_results["metadatas"][0][i] or {}
+                        distance = lease_results["distances"][0][i]
+
+                        chunk = Chunk(
+                            chunk_id=f"lease_{i}",
+                            text=doc,
+                            source=DocType.LEASE,
+                            section=metadata.get("section", "Lease Clause"),
+                            state=None,
+                            session_id=session_id,
+                            start_index=0,
+                            end_index=len(doc)
+                        )
+                        lease_chunks.append(chunk)
+
+                    if lease_results["distances"][0]:
+                        lease_score = min(lease_results["distances"][0])
 
     except Exception as e:
-        # Lease retrieval failure is non-fatal
-        # System can still answer from law alone
+        # FIX — log the real error so it is never silently swallowed
+        print(f"[LEASE RETRIEVAL ERROR] session_id={session_id} | error={str(e)}")
         lease_chunks = []
         lease_score = 1.0
 
@@ -147,6 +191,8 @@ def retrieve_chunks(
         "lease_score": lease_score,
         "error_type": None
     }
+
+
 def compute_confidence(
     law_score: float,
     lease_score: float,
@@ -176,7 +222,7 @@ def compute_confidence(
         return Confidence.LOW
 
     strong = settings.CONFIDENCE_STRONG   # 0.25
-    weak = settings.CONFIDENCE_WEAK       # 0.50
+    weak   = settings.CONFIDENCE_WEAK     # 0.50
 
     law_strong   = law_score <= strong
     law_weak     = law_score <= weak
@@ -196,6 +242,8 @@ def compute_confidence(
 
     # LOW: law retrieval is too weak to trust
     return Confidence.LOW
+
+
 def run_retrieval(
     question: str,
     state: str,

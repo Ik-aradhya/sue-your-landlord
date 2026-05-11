@@ -56,9 +56,17 @@ def format_response(
             return match.group(1).strip()
         return ""
 
+    def clean_lease_reference(raw: str) -> str:
+        """Strips quotes and collapses extra whitespace from lease reference."""
+        if not raw:
+            return raw
+        cleaned = re.sub(r'"[^"]*"', '', raw)
+        cleaned = re.sub(r'\s{2,}', ' ', cleaned).strip().strip(',').strip()
+        return cleaned
+
     answer       = extract_field("ANSWER", llm_output)
     legal_basis  = extract_field("LEGAL BASIS", llm_output)
-    lease_ref    = extract_field("LEASE REFERENCE", llm_output)
+    lease_ref    = clean_lease_reference(extract_field("LEASE REFERENCE", llm_output))
     explanation  = extract_field("EXPLANATION", llm_output)
     conflict_raw = extract_field("CONFLICT", llm_output)
 
@@ -76,12 +84,34 @@ def format_response(
 
     conflict_flag = conflict_raw.strip().upper().startswith("YES")
 
+    # Post-process confidence based on LLM output hedging
+    HEDGE_PHRASES = [
+        "one would need to refer",
+        "does not explicitly",
+        "may be entitled",
+        "under certain conditions",
+        "it depends",
+        "cannot be determined",
+        "unclear",
+        "ambiguous",
+    ]
+
+    answer_lower = answer.lower()
+    hedged = any(phrase in answer_lower for phrase in HEDGE_PHRASES)
+
+    final_confidence = confidence
+    if final_confidence == Confidence.HIGH and (hedged or conflict_flag):
+        final_confidence = Confidence.MEDIUM
+
+    if final_confidence in (Confidence.HIGH, Confidence.MEDIUM) and hedged and conflict_flag:
+        final_confidence = Confidence.LOW
+
     return RAGResponse(
         answer=answer,
         legal_basis=legal_basis,
         lease_reference=lease_ref if lease_ref else None,
         explanation=explanation,
-        confidence=confidence,       # from retrieval — never from LLM
+        confidence=final_confidence,
         conflict_flag=conflict_flag,
         error_type=None
     )

@@ -1,3 +1,4 @@
+import re
 import fitz                        # PyMuPDF
 from fastapi import UploadFile
 from backend.core.config import settings
@@ -9,6 +10,62 @@ from backend.core.database import get_law_collection, get_lease_collection, get_
 
 MAX_BYTES = settings.MAX_FILE_SIZE_MB * 1024 * 1024  # 10MB in bytes
 
+
+# =============================================================================
+# FIX 1 — Extract real section name from each chunk's text
+# Previously: one hardcoded section_hint applied to ALL chunks
+# Now: each chunk gets its own section extracted from its actual text
+# =============================================================================
+
+def extract_section_from_chunk(text: str, doc_type: DocType, state: str = None) -> str:
+    """
+    Extract the real section/clause name from a chunk's text content.
+    Called per-chunk so each chunk gets a meaningful, unique citation.
+    """
+
+    if doc_type == DocType.LEASE:
+        # Match: "Clause 3", "CLAUSE 3A", "Article 5", "ARTICLE 5B"
+        match = re.search(r'(?:Clause|CLAUSE|Article|ARTICLE)\s*(\d+[A-Z]?)', text)
+        if match:
+            # Try to grab the clause title on the same line
+            title_match = re.search(
+                r'(?:Clause|CLAUSE|Article|ARTICLE)\s*\d+[A-Z]?\s*[:\-–]?\s*([^\n]{5,60})', text
+            )
+            title = title_match.group(1).strip().rstrip('.,') if title_match else ""
+            return f"Clause {match.group(1)}" + (f" - {title}" if title else "")
+        return "Lease Document"
+
+    if doc_type == DocType.LAW:
+        # Match: "Section 12", "Section 12A", with optional title
+        match = re.search(
+            r'[Ss]ection\s+(\d+[A-Z]?)\s*[.\-–]?\s*([^\n]{0,60})', text
+        )
+        if match:
+            sec_num = match.group(1)
+            sec_title = match.group(2).strip().rstrip('.,') if match.group(2) else ""
+
+            if state == "maharashtra":
+                act = "Maharashtra Rent Control Act, 1999"
+            elif state == "gujarat":
+                act = "Gujarat Rent Control Act, 1999"
+            else:
+                act = "Rent Control Act"
+
+            return f"{act}, Section {sec_num}" + (f" - {sec_title}" if sec_title else "")
+
+        # Fallback: at least return the Act name (better than "Unknown Section")
+        if state == "maharashtra":
+            return "Maharashtra Rent Control Act, 1999"
+        elif state == "gujarat":
+            return "Gujarat Rent Control Act, 1999"
+
+    return "Unknown Section"
+
+
+# =============================================================================
+# VALIDATION
+# =============================================================================
+
 def validate_pdf(file: UploadFile) -> dict:
     """
     Validates an uploaded PDF before processing.
@@ -17,9 +74,9 @@ def validate_pdf(file: UploadFile) -> dict:
     """
 
     # Check 1 — file size
-    file.file.seek(0, 2)           # seek to end of file
-    size = file.file.tell()        # get position = file size in bytes
-    file.file.seek(0)              # reset to beginning for later use
+    file.file.seek(0, 2)
+    size = file.file.tell()
+    file.file.seek(0)
 
     if size > MAX_BYTES:
         return {"is_valid": False, "error_type": "FILE_TOO_LARGE"}
@@ -31,14 +88,14 @@ def validate_pdf(file: UploadFile) -> dict:
     # Check 3 — contains extractable text (not a scanned image)
     try:
         raw = file.file.read()
-        file.file.seek(0)          # reset again after reading
+        file.file.seek(0)
         doc = fitz.open(stream=raw, filetype="pdf")
         text = ""
         for page in doc:
             text += page.get_text()
         doc.close()
 
-        if len(text.strip()) < 50:    # less than 50 chars = likely scanned
+        if len(text.strip()) < 50:
             return {"is_valid": False, "error_type": "NON_TEXT_PDF"}
 
     except Exception:
@@ -46,6 +103,10 @@ def validate_pdf(file: UploadFile) -> dict:
 
     return {"is_valid": True, "error_type": None}
 
+
+# =============================================================================
+# TEXT EXTRACTION
+# =============================================================================
 
 def extract_text(file: UploadFile, doc_type: DocType) -> dict:
     """
@@ -67,11 +128,9 @@ def extract_text(file: UploadFile, doc_type: DocType) -> dict:
         for page_num, page in enumerate(doc):
             page_text = page.get_text()
 
-            # Skip pages that are mostly whitespace
             if len(page_text.strip()) < 20:
                 continue
 
-            # Label each page so section references survive chunking
             full_text += f"\n[Page {page_num + 1}]\n"
             full_text += page_text
 
@@ -101,7 +160,10 @@ def extract_text(file: UploadFile, doc_type: DocType) -> dict:
         }
 
 
-# Chunk configuration per document type
+# =============================================================================
+# CHUNKING
+# =============================================================================
+
 CHUNK_CONFIG = {
     DocType.LAW: {
         "chunk_size": 512,
@@ -118,8 +180,9 @@ def chunk_text(
     text: str,
     doc_type: DocType,
     state: str = None,
-    session_id: str = None,
-    section_hint: str = "Unknown Section"
+    session_id: str = None
+    # FIX 2 — removed section_hint parameter entirely
+    # Each chunk now extracts its own section via extract_section_from_chunk()
 ) -> dict:
     """
     Splits extracted text into overlapping chunks with metadata.
@@ -128,6 +191,7 @@ def chunk_text(
     Output: { chunks: list[Chunk], error_type }
 
     Guarantee: every chunk carries source metadata for citation.
+    Each chunk gets its own section extracted from its actual text content.
     """
 
     if not text or len(text.strip()) == 0:
@@ -138,7 +202,7 @@ def chunk_text(
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=config["chunk_size"],
         chunk_overlap=config["chunk_overlap"],
-        separators=["\n\n", "\n", ".", " "],  # try paragraph first, then line, then sentence
+        separators=["\n\n", "\n", ".", " "],
         length_function=len
     )
 
@@ -155,11 +219,14 @@ def chunk_text(
         end = start + len(chunk_text_content)
         position = max(0, end - config["chunk_overlap"])
 
+        # FIX 2 — extract section from THIS chunk's own text, not a global hint
+        section = extract_section_from_chunk(chunk_text_content, doc_type, state)
+
         chunk = Chunk(
             chunk_id=str(uuid.uuid4()),
             text=chunk_text_content,
             source=doc_type,
-            section=section_hint,
+            section=section,        # ✅ unique and meaningful per chunk
             state=state,
             session_id=session_id,
             start_index=start,
@@ -170,19 +237,23 @@ def chunk_text(
     return {"chunks": chunks, "error_type": None}
 
 
+# =============================================================================
+# FULL INGESTION PIPELINE
+# =============================================================================
+
 async def run_ingestion_pipeline(
     file: UploadFile,
     doc_type: DocType,
     state: str = None,
-    session_id: str = None        # FIX 3 — received from route, not generated here
+    session_id: str = None
 ) -> dict:
     """
     Full ingestion pipeline:
     1. Validate PDF
     2. Extract text
-    3. Chunk text
+    3. Chunk text (each chunk extracts its own section)
     4. Create embeddings
-    5. Store in vector DB
+    5. Store in correct collection (law or lease) with full metadata
 
     Returns:
         {
@@ -193,11 +264,8 @@ async def run_ingestion_pipeline(
         }
     """
 
-    # =========================
-    # STEP 1 — VALIDATE PDF
-    # =========================
+    # STEP 1 — VALIDATE
     validation = validate_pdf(file)
-
     if not validation["is_valid"]:
         return {
             "success": False,
@@ -206,11 +274,8 @@ async def run_ingestion_pipeline(
             "error_type": validation["error_type"]
         }
 
-    # =========================
     # STEP 2 — EXTRACT TEXT
-    # =========================
     extracted = extract_text(file, doc_type)
-
     if extracted["error_type"]:
         return {
             "success": False,
@@ -219,22 +284,13 @@ async def run_ingestion_pipeline(
             "error_type": extracted["error_type"]
         }
 
-    # =========================
     # STEP 3 — CHUNK TEXT
-    # =========================
-    # FIX 4 — pass section_hint so citations are meaningful
-    section_hint = (
-    "Maharashtra Rent Control Act, 1999" if (doc_type == DocType.LAW and state == "maharashtra")
-    else "Gujarat Rent Control Act, 1999" if (doc_type == DocType.LAW and state == "gujarat")
-    else "Lease Document"
-)
-
+    # FIX 2 — no section_hint passed; each chunk extracts its own section
     chunked = chunk_text(
         text=extracted["text"],
         doc_type=doc_type,
         state=state,
-        session_id=session_id,
-        section_hint=section_hint
+        session_id=session_id
     )
 
     if chunked["error_type"]:
@@ -247,11 +303,9 @@ async def run_ingestion_pipeline(
 
     chunks = chunked["chunks"]
 
-    # =========================
     # STEP 4 — STORE EMBEDDINGS
-    # =========================
     try:
-        # FIX 1 — use correct collection based on doc_type
+        # FIX 1 (original) — correct collection based on doc_type
         if doc_type == DocType.LAW:
             collection = get_law_collection()
         else:
@@ -259,15 +313,14 @@ async def run_ingestion_pipeline(
 
         documents = [chunk.text for chunk in chunks]
         embeddings = [get_embedding(doc) for doc in documents]
-
         ids = [chunk.chunk_id for chunk in chunks]
 
-        # FIX 2 — convert None values to empty string for ChromaDB
+        # Store full metadata — session_id is critical for lease retrieval
         metadatas = [{
             "source":      chunk.source.value,
-            "section":     chunk.section or "",
+            "section":     chunk.section or "",     # ✅ now has real section name
             "state":       chunk.state or "",
-            "session_id":  chunk.session_id or "",
+            "session_id":  chunk.session_id or "",  # ✅ required for lease retrieval
             "start_index": chunk.start_index,
             "end_index":   chunk.end_index
         } for chunk in chunks]
@@ -287,9 +340,7 @@ async def run_ingestion_pipeline(
             "error_type": f"VECTOR_DB_ERROR: {str(e)}"
         }
 
-    # =========================
     # SUCCESS
-    # =========================
     return {
         "success": True,
         "session_id": session_id,
