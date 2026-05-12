@@ -230,18 +230,32 @@ def build_retrieval_query(question: str, history: Optional[list[dict]] = None) -
     Rewrites the user query to improve retrieval accuracy.
     Adds legal terminology that appears in the law text.
     """
-    query_hints = {
-        "increase rent": "standard rent permitted increase tenant consent illegal",
-        "evict": "eviction notice termination tenant protection",
-        "security deposit": "security deposit refund deduction tenant",
-        "notice period": "notice termination vacation tenant landlord",
-    }
+    # Order: longer phrases first where overlap matters (e.g. "increase the rent"
+    # does not match substring "increase rent").
+    query_hints = (
+        ("increase the rent", "standard rent permitted increase tenant consent illegal"),
+        ("rent increase", "standard rent permitted increase tenant consent illegal"),
+        ("increase rent", "standard rent permitted increase tenant consent illegal"),
+        ("raising rent", "standard rent permitted increase tenant consent illegal"),
+        ("raise the rent", "standard rent permitted increase tenant consent illegal"),
+        ("raise rent", "standard rent permitted increase tenant consent illegal"),
+        ("evict", "eviction notice termination vacation tenant protection recovery possession"),
+        ("notice period", "notice termination vacation one month written tenant landlord"),
+        ("kick out", "eviction notice termination vacation tenant protection"),
+        ("leave", "notice termination vacation one month written"),
+        ("security deposit", "security deposit refund deduction tenant"),
+        ("deposit", "security deposit refund deduction tenant"),
+    )
 
-    enhanced = question
-    for keyword, hint in query_hints.items():
-        if keyword.lower() in question.lower():
-            enhanced = f"{question} {hint}"
-            break
+    q_lower = question.lower()
+    matched: list[str] = []
+    seen_hint: set[str] = set()
+    for keyword, hint in query_hints:
+        if keyword in q_lower and hint not in seen_hint:
+            seen_hint.add(hint)
+            matched.append(hint)
+
+    enhanced = f"{question} {' '.join(matched)}".strip() if matched else question
 
     if history:
         recent = history[-2:]

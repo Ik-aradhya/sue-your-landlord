@@ -155,6 +155,7 @@ def run_rag_chain(
     if history is None:
         history = session_store.get_history(session_id)
 
+    # Rewritten query (hints + history) is embedded for retrieval; `question` alone is for the LLM.
     retrieval_query = build_retrieval_query(question, history)
 
     # Stage 1 — Retrieve (embedding uses rewritten / history-augmented query)
