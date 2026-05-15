@@ -3,12 +3,16 @@ from typing import Optional
 
 import fitz                        # PyMuPDF
 from fastapi import UploadFile
+import pytesseract
+import io
+from pdf2image import convert_from_bytes
+from PIL import Image
 from backend.core.config import settings
 from backend.models.schemas import Chunk, DocType
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 import uuid
-from backend.core.database import get_law_collection, get_lease_collection, get_embedding
+from backend.core.database import get_law_index, get_lease_collection, get_embedding
 
 MAX_BYTES = settings.MAX_FILE_SIZE_MB * 1024 * 1024  # 10MB in bytes
 
@@ -106,9 +110,17 @@ def extract_section_from_chunk(text: str, doc_type: DocType, state: str = None) 
 # VALIDATION
 # =============================================================================
 
-def validate_pdf(file: UploadFile) -> dict:
+ACCEPTED_TYPES = [
+    "application/pdf",
+    "image/jpeg",
+    "image/jpg", 
+    "image/png",
+    "image/heic"    # iPhone photos
+]
+
+def validate_file(file: UploadFile) -> dict:
     """
-    Validates an uploaded PDF before processing.
+    Validates an uploaded file before processing.
     Returns: { "is_valid": bool, "error_type": str | None }
     Guarantee: if is_valid=True, file is safe to extract text from.
     """
@@ -122,23 +134,21 @@ def validate_pdf(file: UploadFile) -> dict:
         return {"is_valid": False, "error_type": "FILE_TOO_LARGE"}
 
     # Check 2 — MIME type
-    if file.content_type != "application/pdf":
+    if file.content_type not in ACCEPTED_TYPES:
         return {"is_valid": False, "error_type": "INVALID_FILE_TYPE"}
 
-    # Check 3 — contains extractable text (not a scanned image)
+    # Check 3 — verify file structure
     try:
         raw = file.file.read()
         file.file.seek(0)
-        doc = fitz.open(stream=raw, filetype="pdf")
-        text = ""
-        for page in doc:
-            text += page.get_text()
-        doc.close()
-
-        if len(text.strip()) < 50:
-            return {"is_valid": False, "error_type": "NON_TEXT_PDF"}
-
-    except Exception:
+        if file.content_type == "application/pdf":
+            doc = fitz.open(stream=raw, filetype="pdf")
+            doc.close()
+        else:
+            img = Image.open(io.BytesIO(raw))
+            img.verify()
+    except Exception as e:
+        print(f"Validation Error: {e}")
         return {"is_valid": False, "error_type": "PARSE_ERROR"}
 
     return {"is_valid": True, "error_type": None}
@@ -148,15 +158,107 @@ def validate_pdf(file: UploadFile) -> dict:
 # TEXT EXTRACTION
 # =============================================================================
 
+def check_ocr_quality(text: str) -> str:
+    """
+    Evaluates the quality of extracted text based on the ratio of alphanumeric characters.
+    """
+    if not text:
+        return "LOW"
+    
+    clean_text = re.sub(r'\s+', '', text)
+    if not clean_text:
+        return "LOW"
+        
+    alnum_count = sum(c.isalnum() for c in clean_text)
+    ratio = alnum_count / len(clean_text)
+    
+    if ratio > 0.85:
+        return "HIGH"
+    elif ratio > 0.70:
+        return "MEDIUM"
+    else:
+        return "LOW"
+
+
+def extract_text_with_ocr(raw: bytes) -> str:
+    """
+    Fallback: extract text from scanned/image PDFs using OCR.
+    Called when normal PyMuPDF extraction returns empty text.
+    """
+    try:
+        # Convert PDF pages to images
+        images = convert_from_bytes(raw, dpi=300)
+        
+        full_text = ""
+        for page_num, image in enumerate(images):
+            # Run OCR on each page image
+            page_text = pytesseract.image_to_string(
+                image,
+                lang="eng"      # add "hin" for Hindi support later
+            )
+            if page_text.strip():
+                full_text += f"\n[Page {page_num + 1}]\n"
+                full_text += page_text
+
+        return full_text.strip()
+
+    except Exception as e:
+        return ""
+
+
+def extract_text_from_image(file: UploadFile) -> dict:
+    """
+    Directly extracts text from uploaded image files.
+    """
+    try:
+        raw = file.file.read()
+        file.file.seek(0)
+        
+        image = Image.open(io.BytesIO(raw))
+        
+        # Enhance image for better OCR accuracy
+        image = image.convert("RGB")
+        
+        text = pytesseract.image_to_string(image, lang="eng")
+        
+        if len(text.strip()) < 50:
+            return {
+                "text": None,
+                "page_count": 1,
+                "error_type": "EMPTY_TEXT",
+                "ocr_quality": None
+            }
+
+        return {
+            "text": text.strip(),
+            "page_count": 1,
+            "error_type": None,
+            "ocr_quality": check_ocr_quality(text)
+        }
+
+    except Exception as e:
+        print(f"OCR Extraction Error: {e}")
+        return {
+            "text": None,
+            "page_count": 0,
+            "error_type": "PARSE_ERROR",
+            "ocr_quality": None
+        }
+
+
 def extract_text(file: UploadFile, doc_type: DocType) -> dict:
     """
-    Extracts clean text from a validated PDF.
+    Extracts clean text from a validated file.
 
     Input:  validated UploadFile, doc_type (law or lease)
     Output: { text, page_count, doc_type, error_type }
 
     Guarantee: if error_type is None → text is safe to chunk.
     """
+    if file.content_type in ACCEPTED_TYPES and file.content_type != "application/pdf":
+        result = extract_text_from_image(file)
+        result["doc_type"] = doc_type
+        return result
     try:
         raw = file.file.read()
         file.file.seek(0)
@@ -177,26 +279,36 @@ def extract_text(file: UploadFile, doc_type: DocType) -> dict:
         doc.close()
 
         if len(full_text.strip()) < 50:
-            return {
-                "text": None,
-                "page_count": page_count,
-                "doc_type": doc_type,
-                "error_type": "EMPTY_TEXT"
-            }
+            # Fallback to OCR
+            fallback_text = extract_text_with_ocr(raw)
+            if len(fallback_text.strip()) >= 50:
+                full_text = fallback_text
+            else:
+                return {
+                    "text": None,
+                    "page_count": page_count,
+                    "doc_type": doc_type,
+                    "error_type": "EMPTY_TEXT",
+                    "ocr_quality": None
+                }
 
+        ocr_quality = check_ocr_quality(full_text)
         return {
             "text": full_text.strip(),
             "page_count": page_count,
             "doc_type": doc_type,
-            "error_type": None
+            "error_type": None,
+            "ocr_quality": ocr_quality
         }
 
     except Exception as e:
+        print(f"PyMuPDF Extraction Error: {e}")
         return {
             "text": None,
             "page_count": 0,
             "doc_type": doc_type,
-            "error_type": "PARSE_ERROR"
+            "error_type": "PARSE_ERROR",
+            "ocr_quality": None
         }
 
 
@@ -325,7 +437,7 @@ async def run_ingestion_pipeline(
     """
 
     # STEP 1 — VALIDATE
-    validation = validate_pdf(file)
+    validation = validate_file(file)
     if not validation["is_valid"]:
         return {
             "success": False,
@@ -365,12 +477,6 @@ async def run_ingestion_pipeline(
 
     # STEP 4 — STORE EMBEDDINGS
     try:
-        # FIX 1 (original) — correct collection based on doc_type
-        if doc_type == DocType.LAW:
-            collection = get_law_collection()
-        else:
-            collection = get_lease_collection()
-
         documents = [chunk.text for chunk in chunks]
         embeddings = [get_embedding(doc) for doc in documents]
         ids = [chunk.chunk_id for chunk in chunks]
@@ -385,12 +491,30 @@ async def run_ingestion_pipeline(
             "end_index":   chunk.end_index
         } for chunk in chunks]
 
-        collection.add(
-            ids=ids,
-            documents=documents,
-            embeddings=embeddings,
-            metadatas=metadatas
-        )
+        if doc_type == DocType.LAW:
+            law_index = get_law_index()
+            vectors = []
+            for i in range(len(chunks)):
+                meta = metadatas[i].copy()
+                meta["text"] = documents[i]
+                vectors.append({
+                    "id": ids[i],
+                    "values": embeddings[i],
+                    "metadata": meta
+                })
+            
+            # Pinecone upsert in batches
+            batch_size = 100
+            for i in range(0, len(vectors), batch_size):
+                law_index.upsert(vectors=vectors[i:i+batch_size])
+        else:
+            collection = get_lease_collection(session_id)
+            collection.add(
+                ids=ids,
+                documents=documents,
+                embeddings=embeddings,
+                metadatas=metadatas
+            )
 
     except Exception as e:
         return {
@@ -406,5 +530,16 @@ async def run_ingestion_pipeline(
         "session_id": session_id,
         "chunks_stored": len(chunks),
         "pages": extracted["page_count"],
+        "ocr_quality": extracted.get("ocr_quality", "HIGH"),
+        "error_type": None
+    }   }
+
+    # SUCCESS
+    return {
+        "success": True,
+        "session_id": session_id,
+        "chunks_stored": len(chunks),
+        "pages": extracted["page_count"],
+        "ocr_quality": extracted.get("ocr_quality", "HIGH"),
         "error_type": None
     }

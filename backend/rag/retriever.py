@@ -1,6 +1,6 @@
 from typing import Optional
 
-from backend.core.database import get_law_collection, get_lease_collection, get_embedding
+from backend.core.database import get_law_index, get_lease_collection, get_embedding
 from backend.core.config import settings
 from backend.models.schemas import Chunk, RetrievedContext, Confidence, DocType
 
@@ -63,13 +63,20 @@ def retrieve_chunks(
     law_score = 1.0       # worst possible distance — improved if results found
     lease_score = 1.0
 
-    # ── Step 1: Query law collection ──────────────────────────────
+    # ── Step 1: Query law collection (Pinecone) ───────────────────────
     try:
-        law_collection = get_law_collection()
+        law_index = get_law_index()
 
-        # FIX — clamp n_results to actual collection size to avoid ChromaDB crash
-        law_count = law_collection.count()
-        if law_count == 0:
+        pinecone_results = law_index.query(
+            vector=query_vector,
+            top_k=settings.TOP_K_LAW,
+            filter={"state": state} if state else None,
+            include_metadata=True
+        )
+
+        matches = pinecone_results.get("matches", [])
+
+        if not matches:
             return {
                 "law_chunks": [],
                 "lease_chunks": [],
@@ -78,41 +85,29 @@ def retrieve_chunks(
                 "error_type": "LAW_COLLECTION_EMPTY"
             }
 
-        n_results_law = max(1, min(settings.TOP_K_LAW, law_count))
-
-        query_kwargs = {
-            "query_embeddings": [query_vector],
-            "n_results": n_results_law,
-            "include": ["documents", "metadatas", "distances"]
-        }
-        if state:
-            query_kwargs["where"] = {"state": state}
-
-        law_results = law_collection.query(**query_kwargs)
-
-        # ChromaDB returns nested lists — [0] unwraps the first query
-        for i, doc in enumerate(law_results["documents"][0]):
-            metadata = law_results["metadatas"][0][i] or {}
-            distance = law_results["distances"][0][i]
+        for i, match in enumerate(matches):
+            metadata = match.get("metadata", {})
+            text = metadata.get("text", "")
+            score = match.get("score", 0.0)
+            # Pinecone returns similarity (higher = better), convert to distance
+            distance = 1.0 - score
 
             chunk = Chunk(
                 chunk_id=f"law_{i}",
-                text=doc,
+                text=text,
                 source=DocType.LAW,
                 section=metadata.get("section", "Unknown Section"),
                 state=metadata.get("state", state),
                 session_id=None,
                 start_index=0,
-                end_index=len(doc)
+                end_index=len(text)
             )
             law_chunks.append(chunk)
 
-        # Best score = lowest distance (most similar)
-        if law_results["distances"][0]:
-            law_score = min(law_results["distances"][0])
+        if matches:
+            law_score = 1.0 - matches[0]["score"]  # best match = first result
 
     except Exception as e:
-        # Law retrieval failed — return error, do not continue
         return {
             "law_chunks": [],
             "lease_chunks": [],
@@ -123,7 +118,7 @@ def retrieve_chunks(
 
     # ── Step 2: Query lease collection ───────────────────────────
     try:
-        lease_collection = get_lease_collection()
+        lease_collection = get_lease_collection(session_id)
         
         # --- DEBUG CHECK ---
         all_lease = lease_collection.get(include=["metadatas"])

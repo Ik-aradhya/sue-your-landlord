@@ -44,13 +44,14 @@ class UploadResponse(BaseModel):
     session_id: Optional[str] = None
     chunks_stored: Optional[int] = None
     pages: Optional[int] = None
+    ocr_quality: Optional[str] = "HIGH"
     error_type: Optional[str] = None
     message:Optional[str] = None
 
 class ChatRequest(BaseModel):
     session_id: str
     question: str
-    state: str                    # "maharashtra" | "gujarat"
+    state: str                    # "maharashtra" | "gujarat" | "delhi" | "karnataka" | "tamil_nadu"
 
 class ChatResponse(BaseModel):
     answer: str

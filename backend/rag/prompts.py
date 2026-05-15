@@ -70,12 +70,28 @@ STRICT RULES — follow all without exception
      requires it — and if you must contradict, explain why.
    - Use prior context to resolve ambiguous pronouns ("it", "that clause", etc.).
 
+   # Add as Rule 10 (after Rule 9):
+
+10. LEASE SILENCE OVERRIDES LAW PERMISSIVENESS
+    If the law says something IS permitted but the lease has NO clause
+    authorising it, the answer is NO — because the lease governs this
+    specific tenancy.
+    Example: Law permits rent increases (MRC Act S.14) BUT lease Clause 3
+    has no rent revision provision → ANSWER: No. The lease does not permit it.
+    NEVER answer "Yes" solely because the law allows it if the lease is silent.
+
+
 ════════════════════════════════════════
 CONFIDENCE RUBRIC — set this field precisely
 ════════════════════════════════════════
 
+# Replace your MEDIUM line with:
+
 HIGH   → The lease document AND/OR cited law directly and explicitly answers
          the question. No external lookup needed. Answer is definitive.
+         THIS INCLUDES: when a lease clause is present but explicitly contains
+         NO provision for the asked issue — that IS a definitive answer (No).
+         Example: Clause 3 sets rent but has no rent increase provision → HIGH confidence No.
 
 MEDIUM → The lease document partially addresses the question, OR the answer
          requires inferring from related clauses. Some ambiguity exists.
@@ -89,7 +105,9 @@ SELF-CHECK — before finalising your response, verify:
     use rule 3's exact sentence and CONFIDENCE LOW.
   • If hedging still appears in ANSWER → confidence CANNOT be HIGH.
   • If CONFLICT is YES → confidence cannot be HIGH.
-  • If no lease clause directly addresses the question → MEDIUM or LOW.
+  • If the lease clause present addresses the BASE TOPIC but NOT the specific
+    issue asked → that is a definitive No. Set CONFIDENCE HIGH, ANSWER No.
+  • If NO lease clause addresses even the base topic → MEDIUM or LOW.
 
 ════════════════════════════════════════
 LEASE REFERENCE FIELD — strict format
@@ -232,25 +250,20 @@ def build_retrieval_query(question: str, history: Optional[list[dict]] = None) -
     """
     # Order: longer phrases first where overlap matters (e.g. "increase the rent"
     # does not match substring "increase rent").
-    query_hints = (
-        ("increase the rent", "standard rent permitted increase tenant consent illegal"),
-        ("rent increase", "standard rent permitted increase tenant consent illegal"),
-        ("increase rent", "standard rent permitted increase tenant consent illegal"),
-        ("raising rent", "standard rent permitted increase tenant consent illegal"),
-        ("raise the rent", "standard rent permitted increase tenant consent illegal"),
-        ("raise rent", "standard rent permitted increase tenant consent illegal"),
-        ("evict", "eviction notice termination vacation tenant protection recovery possession"),
-        ("notice period", "notice termination vacation one month written tenant landlord"),
-        ("kick out", "eviction notice termination vacation tenant protection"),
-        ("leave", "notice termination vacation one month written"),
-        ("security deposit", "security deposit refund deduction tenant"),
-        ("deposit", "security deposit refund deduction tenant"),
-    )
+    query_hints = {
+    "increase rent":    "standard rent permitted increase tenant consent illegal",
+    "evict":            "eviction notice termination vacation tenant protection recovery possession",
+    "notice period":    "notice termination vacation one month written tenant landlord",
+    "kick out":         "eviction notice termination vacation tenant protection",
+    "leave":            "notice termination vacation one month written",
+    "security deposit": "security deposit refund deduction tenant",
+    "deposit":          "security deposit refund deduction tenant",
+}
 
     q_lower = question.lower()
     matched: list[str] = []
     seen_hint: set[str] = set()
-    for keyword, hint in query_hints:
+    for keyword, hint in query_hints.items():
         if keyword in q_lower and hint not in seen_hint:
             seen_hint.add(hint)
             matched.append(hint)

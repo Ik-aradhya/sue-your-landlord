@@ -21,7 +21,7 @@ async def upload_lease(
     """
 
     # Validate state selection
-    valid_states = ["maharashtra", "gujarat"]
+    valid_states = ["maharashtra", "gujarat", "delhi", "karnataka", "tamil_nadu"]
     if state.lower() not in valid_states:
         raise HTTPException(
             status_code=400,
@@ -51,6 +51,7 @@ async def upload_lease(
         session_id=session_id,          # FIX 3 — return the same session_id to frontend
         chunks_stored=result["chunks_stored"],
         pages=result["pages"],
+        ocr_quality=result.get("ocr_quality", "HIGH"),
         error_type=None,
         message=f"Lease uploaded successfully. {result['chunks_stored']} sections indexed."
     )
@@ -103,11 +104,11 @@ def _error_message(error_type: str) -> str:
     Never expose raw error codes to the user.
     """
     messages = {
-        "FILE_TOO_LARGE":    "Your file exceeds the 10MB limit. Please upload a smaller PDF.",
-        "INVALID_FILE_TYPE": "Only PDF files are accepted.",
-        "NON_TEXT_PDF":      "Your PDF appears to be scanned. Please upload a text-based PDF.",
-        "PARSE_ERROR":       "We could not read your PDF. It may be corrupted.",
-        "EMPTY_TEXT":        "No readable text was found in your PDF.",
+        "FILE_TOO_LARGE":    "Your file exceeds the 10MB limit. Please upload a smaller file.",
+        "INVALID_FILE_TYPE": "Only PDF and Image files are accepted.",
+        "NON_TEXT_PDF":      "Your document appears to be scanned. Please upload a text-based document.",
+        "PARSE_ERROR":       "We could not read your file. It may be corrupted or OCR processing failed.",
+        "EMPTY_TEXT":        "No readable text was found in your file.",
         "NO_CHUNKS_CREATED": "Your document was too short to process.",
         "STORAGE_FAILED":    "We could not store your document. Please try again.",
     }
