@@ -129,7 +129,7 @@ ANSWER:
 
 LEGAL BASIS:
 [Exact Citation from the provided legal context —
- e.g. "Maharashtra Rent Control Act, 1999, Section 12"]
+ e.g. e.g. "Maharashtra Rent Control Act, 1999, Section 12" | "Gujarat Rent Control Act, 1999, Section 5" | "Delhi Rent Control Act, 1958, Section 8"
 
 LEASE REFERENCE:
 [Clause identifiers only — e.g. "Clause 1, Clause 3"

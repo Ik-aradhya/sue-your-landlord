@@ -21,7 +21,8 @@ async def upload_lease(
     """
 
     # Validate state selection
-    valid_states = ["maharashtra", "gujarat", "delhi", "karnataka", "tamil_nadu"]
+    valid_states = ["maharashtra", "gujarat", "delhi", "karnataka", "tamil_nadu",
+    "telangana", "haryana", "uttar_pradesh", "west_bengal", "kerala"]
     if state.lower() not in valid_states:
         raise HTTPException(
             status_code=400,
@@ -73,7 +74,8 @@ async def chat(request: ChatRequest):
         )
 
     # Validate state
-    valid_states = ["maharashtra", "gujarat"]
+    valid_states = [   "maharashtra", "gujarat", "delhi", "karnataka", "tamil_nadu",
+    "telangana", "haryana", "uttar_pradesh", "west_bengal", "kerala"]
     if request.state.lower() not in valid_states:
         raise HTTPException(
             status_code=400,

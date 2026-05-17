@@ -4,6 +4,7 @@ import io
 from fastapi import UploadFile
 from backend.rag.ingest import run_ingestion_pipeline
 from backend.models.schemas import DocType
+from starlette.datastructures import Headers
 
 async def main():
     laws_dir = "data/laws"
@@ -17,19 +18,26 @@ async def main():
             
         filepath = os.path.join(laws_dir, filename)
         
-        # Deduce state from filename
-        state = "maharashtra"
-        for s in ["maharashtra", "gujarat", "delhi", "karnataka", "tamil_nadu"]:
+        # ✅ All 10 states
+        state = "unknown"
+        for s in [
+            "maharashtra", "gujarat", "delhi", "karnataka",
+            "tamil_nadu", "telangana", "haryana",
+            "uttar_pradesh", "west_bengal", "kerala"
+        ]:
             if s in filename.lower().replace(" ", "_"):
                 state = s
                 break
-        print(f"Ingesting {filename} for state: {state}...")
+
+        if state == "unknown":
+            print(f"⚠️  Skipping {filename} — state not recognised")
+            continue
+            
+        print(f"⏳ Ingesting {filename} → state: {state}")
         
         with open(filepath, "rb") as f:
             content = f.read()
             
-        # Mocking FastAPI's UploadFile
-        from starlette.datastructures import Headers
         upload_file = UploadFile(
             filename=filename, 
             file=io.BytesIO(content),
@@ -43,7 +51,7 @@ async def main():
             session_id=None
         )
         
-        print(f"Result for {filename}: {result}")
+        print(f"✅ {filename}: {result}")
 
 if __name__ == "__main__":
     asyncio.run(main())

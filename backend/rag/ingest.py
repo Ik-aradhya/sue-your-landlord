@@ -29,6 +29,22 @@ def _law_act_title(state: Optional[str]) -> str:
         return "Maharashtra Rent Control Act, 1999"
     if s == "gujarat":
         return "Gujarat Rent Control Act, 1999"
+    if s == "delhi":
+        return "Delhi Rent Control Act, 1958"
+    if s == "karnataka":
+        return "Karnataka Rent Control Act, 2001"
+    if s == "tamil_nadu":
+        return "Tamil Nadu Regulation of Rights and Responsibilities of Landlords and Tenants Act, 2017"
+    if s == "telangana":
+        return "Telangana Rent Control Act, 1950"
+    if s == "haryana":
+        return "Haryana Urban (Control of Rent and Eviction) Act, 1973"
+    if s == "uttar_pradesh":
+        return "Uttar Pradesh Urban Buildings (Regulation of Letting, Rent and Eviction) Act, 1972"
+    if s == "west_bengal":
+        return "West Bengal Premises Tenancy Act, 1997"
+    if s == "kerala":
+        return "Kerala Buildings (Lease and Rent Control) Act, 1965"
     return "Rent Control Act"
 
 
