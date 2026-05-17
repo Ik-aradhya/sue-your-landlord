@@ -22,12 +22,15 @@ fsspec==2026.3.0
 googleapis-common-protos==1.73.1
 grpcio==1.80.0
 h11==0.16.0
+h2==4.3.0
 hf-xet==1.4.3
+hpack==4.1.0
 httpcore==1.0.9
 httptools==0.7.1
 httpx==0.28.1
 httpx-sse==0.4.3
 huggingface_hub==1.8.0
+hyperframe==6.1.0
 idna==3.11
 importlib_metadata==8.7.1
 importlib_resources==6.5.2
@@ -51,6 +54,7 @@ marshmallow==3.26.2
 mdurl==0.1.2
 mmh3==5.2.1
 mpmath==1.3.0
+msgspec==0.21.1
 multidict==6.7.1
 mypy_extensions==1.1.0
 networkx==3.6.1
@@ -67,6 +71,9 @@ opentelemetry-semantic-conventions==0.61b0
 orjson==3.11.8
 overrides==7.7.0
 packaging==26.0
+pdf2image==1.17.0
+Pillow==12.2.0
+pinecone==9.0.0
 propcache==0.4.1
 protobuf==6.33.6
 pybase64==1.4.3
@@ -77,6 +84,7 @@ Pygments==2.20.0
 PyMuPDF==1.27.2.2
 PyPika==0.51.1
 pyproject_hooks==1.2.0
+pytesseract==0.3.13
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
 python-multipart==0.0.22

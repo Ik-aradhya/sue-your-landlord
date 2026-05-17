@@ -532,14 +532,4 @@ async def run_ingestion_pipeline(
         "pages": extracted["page_count"],
         "ocr_quality": extracted.get("ocr_quality", "HIGH"),
         "error_type": None
-    }   }
-
-    # SUCCESS
-    return {
-        "success": True,
-        "session_id": session_id,
-        "chunks_stored": len(chunks),
-        "pages": extracted["page_count"],
-        "ocr_quality": extracted.get("ocr_quality", "HIGH"),
-        "error_type": None
-    }
+    }   

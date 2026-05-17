@@ -2,22 +2,30 @@ from pathlib import Path
 
 import chromadb
 from chromadb.utils import embedding_functions
-
 from pinecone import Pinecone
 
 from backend.core.config import settings
+
+
+def _resolved_chroma_path() -> str:
+    raw = Path(settings.CHROMA_PATH)
+    if raw.is_absolute():
+        return str(raw)
+    repo_root = Path(__file__).resolve().parents[2]
+    return str((repo_root / raw).resolve())
 
 
 # ─── Embedding ───────────────────────────────────────────────────
 _embedding_function = embedding_functions.DefaultEmbeddingFunction()
 
 def get_embedding(text: str) -> list[float]:
-    emb = _embedding_function([text])[0]
-    return [float(x) for x in emb]
+    result = _embedding_function([text])[0]
+    # Pinecone requires a plain Python list — numpy arrays are not JSON-serialisable
+    return result.tolist() if hasattr(result, "tolist") else list(result)
 
 
-# ─── ChromaDB (lease only — temporary, session scoped) ───────────
-_chroma_client = chromadb.EphemeralClient()
+# ─── ChromaDB (lease only — persistent on disk so data survives restarts) ───
+_chroma_client = chromadb.PersistentClient(path=_resolved_chroma_path())
 
 def get_lease_collection(session_id: str):
     return _chroma_client.get_or_create_collection(

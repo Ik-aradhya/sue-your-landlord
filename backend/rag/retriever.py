@@ -77,35 +77,30 @@ def retrieve_chunks(
         matches = pinecone_results.get("matches", [])
 
         if not matches:
-            return {
-                "law_chunks": [],
-                "lease_chunks": [],
-                "law_score": 1.0,
-                "lease_score": 1.0,
-                "error_type": "LAW_COLLECTION_EMPTY"
-            }
+            # Law collection returned nothing — don't bail, still try the lease
+            print("[WARN] Pinecone returned no law matches for this query.")
+        else:
+            for i, match in enumerate(matches):
+                metadata = match.get("metadata", {})
+                text = metadata.get("text", "")
+                score = match.get("score", 0.0)
+                # Pinecone returns similarity (higher = better), convert to distance
+                distance = 1.0 - score
 
-        for i, match in enumerate(matches):
-            metadata = match.get("metadata", {})
-            text = metadata.get("text", "")
-            score = match.get("score", 0.0)
-            # Pinecone returns similarity (higher = better), convert to distance
-            distance = 1.0 - score
+                chunk = Chunk(
+                    chunk_id=f"law_{i}",
+                    text=text,
+                    source=DocType.LAW,
+                    section=metadata.get("section", "Unknown Section"),
+                    state=metadata.get("state", state),
+                    session_id=None,
+                    start_index=0,
+                    end_index=len(text)
+                )
+                law_chunks.append(chunk)
 
-            chunk = Chunk(
-                chunk_id=f"law_{i}",
-                text=text,
-                source=DocType.LAW,
-                section=metadata.get("section", "Unknown Section"),
-                state=metadata.get("state", state),
-                session_id=None,
-                start_index=0,
-                end_index=len(text)
-            )
-            law_chunks.append(chunk)
-
-        if matches:
-            law_score = 1.0 - matches[0]["score"]  # best match = first result
+            if matches:
+                law_score = 1.0 - matches[0]["score"]  # best match = first result
 
     except Exception as e:
         return {
@@ -212,19 +207,16 @@ def compute_confidence(
         NO match:     distance >  0.50  → fallback
     """
 
-    law_present = len(law_chunks) > 0
+    law_present   = len(law_chunks) > 0
     lease_present = len(lease_chunks) > 0
 
-    # No law chunks at all — cannot answer legal questions
-    if not law_present:
-        return Confidence.LOW
+    strong = settings.CONFIDENCE_STRONG   # 0.40
+    weak   = settings.CONFIDENCE_WEAK     # 0.65
 
-    strong = settings.CONFIDENCE_STRONG   # 0.25
-    weak   = settings.CONFIDENCE_WEAK     # 0.50
-
-    law_strong   = law_score <= strong
-    law_weak     = law_score <= weak
+    law_strong   = law_score   <= strong
+    law_weak     = law_score   <= weak
     lease_strong = lease_score <= strong
+    lease_weak   = lease_score <= weak
 
     # HIGH: strong law match + lease also found and relevant
     if law_strong and lease_present and lease_strong:
@@ -234,11 +226,15 @@ def compute_confidence(
     if law_strong:
         return Confidence.HIGH
 
-    # MEDIUM: law found but not a strong match
+    # MEDIUM: reasonable law match
     if law_weak:
         return Confidence.MEDIUM
 
-    # LOW: law retrieval is too weak to trust
+    # MEDIUM: no law but lease itself answers the question clearly
+    if not law_present and lease_present and lease_strong:
+        return Confidence.MEDIUM
+
+    # LOW: too weak to trust
     return Confidence.LOW
 
 
