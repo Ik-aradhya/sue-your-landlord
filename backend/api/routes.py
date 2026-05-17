@@ -1,8 +1,8 @@
 import uuid
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
-from backend.rag.ingest import run_ingestion_pipeline
-from backend.rag.chain import run_rag_chain
-from backend.models.schemas import (
+from rag.ingest import run_ingestion_pipeline
+from rag.chain import run_rag_chain
+from models.schemas import (
     DocType, ChatRequest, ChatResponse, UploadResponse
 )
 

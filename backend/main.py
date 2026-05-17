@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.api.routes import router
+from api.routes import router
 
 app = FastAPI(
     title="Sue Your Landlord",

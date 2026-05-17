@@ -7,12 +7,12 @@ import pytesseract
 import io
 from pdf2image import convert_from_bytes
 from PIL import Image
-from backend.core.config import settings
-from backend.models.schemas import Chunk, DocType
+from core.config import settings
+from models.schemas import Chunk, DocType
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 import uuid
-from backend.core.database import get_law_index, get_lease_collection, get_embedding
+from core.database import get_law_index, get_lease_collection, get_embedding
 
 MAX_BYTES = settings.MAX_FILE_SIZE_MB * 1024 * 1024  # 10MB in bytes
 

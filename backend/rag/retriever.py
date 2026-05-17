@@ -1,8 +1,8 @@
 from typing import Optional
 
-from backend.core.database import get_law_index, get_lease_collection, get_embedding
-from backend.core.config import settings
-from backend.models.schemas import Chunk, RetrievedContext, Confidence, DocType
+from core.database import get_law_index, get_lease_collection, get_embedding
+from core.config import settings
+from models.schemas import Chunk, RetrievedContext, Confidence, DocType
 
 
 def embed_query(question: str) -> dict:

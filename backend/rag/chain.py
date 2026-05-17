@@ -2,11 +2,11 @@ import os
 import re
 from typing import Optional
 from langchain_groq import ChatGroq
-from backend.core.config import settings
-from backend.core.session_store import session_store
-from backend.models.schemas import RAGResponse, Confidence
-from backend.rag.prompts import build_prompt, build_retrieval_query
-from backend.rag.retriever import run_retrieval
+from core.config import settings
+from core.session_store import session_store
+from models.schemas import RAGResponse, Confidence
+from rag.prompts import build_prompt, build_retrieval_query
+from rag.retriever import run_retrieval
 
 # Initialise LLM once at module level
 llm = ChatGroq(

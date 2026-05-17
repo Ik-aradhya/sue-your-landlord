@@ -4,7 +4,7 @@ import chromadb
 from chromadb.utils import embedding_functions
 from pinecone import Pinecone
 
-from backend.core.config import settings
+from core.config import settings
 
 
 def _resolved_chroma_path() -> str:
