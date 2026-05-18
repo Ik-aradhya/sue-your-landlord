@@ -36,8 +36,12 @@ def get_lease_collection(session_id: str):
 
 
 # ─── Pinecone (law only — persistent, cloud) ─────────────────────
-_pinecone_client = Pinecone(api_key=settings.PINECONE_API_KEY)
-_law_index = _pinecone_client.Index(settings.PINECONE_INDEX_NAME)
+_pinecone_client: Pinecone | None = None
+_law_index = None
 
 def get_law_index():
+    global _pinecone_client, _law_index
+    if _law_index is None:
+        _pinecone_client = Pinecone(api_key=settings.PINECONE_API_KEY)
+        _law_index = _pinecone_client.Index(settings.PINECONE_INDEX_NAME)
     return _law_index

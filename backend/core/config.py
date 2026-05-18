@@ -1,5 +1,8 @@
+from pathlib import Path
 
 from pydantic_settings import BaseSettings
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 class Settings(BaseSettings):
     GROQ_API_KEY: str
@@ -17,7 +20,6 @@ class Settings(BaseSettings):
     CONFIDENCE_WEAK: float = 0.65
 
     class Config:
-        env_file = ".env"
+        env_file = REPO_ROOT / ".env"
 
 settings = Settings()
-

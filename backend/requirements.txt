@@ -1,13 +1,1 @@
-fastapi
-uvicorn
-groq
-chromadb
-sentence-transformers
-python-multipart
-pydantic-settings
-pinecone-client
-langchain
-langchain-community
-pypdf
-
-pymupdf
+-r ../requirements/server.txt
