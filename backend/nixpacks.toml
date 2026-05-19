@@ -4,6 +4,5 @@ aptPkgs = ["...", "tesseract-ocr", "tesseract-ocr-eng", "poppler-utils"]
 [phases.build]
 cmds = [
   "which tesseract && tesseract --list-langs | grep -q '^eng$'",
-  "pip install -r requirements.txt",
-  "python -c \"from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')\""
+  "pip install -r requirements.txt"
 ]

@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Optional
 
 from pydantic_settings import BaseSettings
 
@@ -8,6 +9,7 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str
     PINECONE_API_KEY: str
     PINECONE_INDEX_NAME: str = "sue-your-landlord"
+    HF_TOKEN: Optional[str] = None
     LLM_MODEL: str = "llama-3.3-70b-versatile" 
     EMBEDDING_MODEL: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     MAX_FILE_SIZE_MB: int = 10
