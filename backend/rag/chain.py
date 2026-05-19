@@ -153,6 +153,41 @@ def fallback_response(reason: str = "") -> RAGResponse:
     )
 
 
+def retrieval_unavailable_response(reason: str = "") -> RAGResponse:
+    """
+    Returns a clear system-status response when Pinecone/embedding retrieval is
+    unavailable. This must not look like a legal conclusion.
+    """
+    return RAGResponse(
+        answer="The legal database is temporarily unavailable, so I can't retrieve the law or lease context right now.",
+        legal_basis="",
+        lease_reference="Retrieval unavailable — lease and law context could not be checked",
+        explanation="This is a system retrieval issue, not a legal answer. Please try again after the vector database is available.",
+        confidence=Confidence.LOW,
+        conflict_flag=False,
+        error_type=f"RETRIEVAL_UNAVAILABLE: {reason}" if reason else "RETRIEVAL_UNAVAILABLE"
+    )
+
+
+def is_retrieval_unavailable(reason: str | None) -> bool:
+    if not reason:
+        return False
+
+    reason_upper = reason.upper()
+    unavailable_markers = [
+        "EMBEDDING_FAILED",
+        "LAW_RETRIEVAL_FAILED",
+        "VECTOR_DB_ERROR",
+        "PINECONE",
+        "CONNECTION",
+        "TIMEOUT",
+        "UNAVAILABLE",
+        "DNS",
+        "SERVICE",
+    ]
+    return any(marker in reason_upper for marker in unavailable_markers)
+
+
 def run_rag_chain(
     question: str,
     state: str,
@@ -182,6 +217,8 @@ def run_rag_chain(
     )
 
     if retrieval["error_type"]:
+        if is_retrieval_unavailable(retrieval["error_type"]):
+            return retrieval_unavailable_response(retrieval["error_type"])
         return fallback_response(retrieval["error_type"])
 
     context = retrieval["context"]
