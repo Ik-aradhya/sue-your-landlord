@@ -64,21 +64,21 @@ def _normalize_statute_text(t: str) -> str:
     return t
 
 
-# Patterns return group(1) = section number (Arabic digits, optional letter suffix)
-_LAW_SECTION_NUMBER_PATTERNS: tuple[str, ...] = (
-    r"(?i)\bSection\s+(\d+[A-Z]?)\b",
-    r"(?i)\bSections\s+(\d+[A-Z]?)\b",
-    r"(?i)\bSec\.?\s*(\d+[A-Z]?)\b",
-    r"(?i)§\s*(\d+[A-Z]?)\b",
-    r"(?i)\bS\.\s*(\d+[A-Z]?)\b",
-    r"(?i)\bunder\s+section\s+(\d+[A-Z]?)\b",
-    r"(?i)\bsection\s*[:\-–]\s*(\d+[A-Z]?)\b",
+# Patterns return group(1) = section number (Arabic digits, optional letter suffix).
+# These intentionally match headings, not inline cross-references like
+# "sub-section (1) of section 14", because those references caused chunks from
+# Section 11 to be mislabeled as Section 14.
+_LAW_SECTION_HEADING_PATTERNS: tuple[str, ...] = (
+    r"(?im)^\s*(\d+[A-Z]?)\.\s+[A-Z][^\n]{3,}",
+    r"(?m)^\s*(?:Section|SECTION)\s+(\d+[A-Z]?)\b\s*[:.\-–]",
+    r"(?m)^\s*(?:Sec\.|SEC\.)\s*(\d+[A-Z]?)\b\s*[:.\-–]",
+    r"(?m)^\s*§\s*(\d+[A-Z]?)\b\s*[:.\-–]",
 )
 
 
 def find_last_law_section_citation_in_text(text: str, state: Optional[str]) -> Optional[str]:
     """
-    Rightmost section marker in `text` wins (handles multi-section chunks).
+    Rightmost section heading in `text` wins (handles multi-section chunks).
     Returns '…Act…, Section N' or None.
     """
     if not text or not text.strip():
@@ -87,7 +87,7 @@ def find_last_law_section_citation_in_text(text: str, state: Optional[str]) -> O
     norm = _normalize_statute_text(text)
     best_end = -1
     best_num: Optional[str] = None
-    for pat in _LAW_SECTION_NUMBER_PATTERNS:
+    for pat in _LAW_SECTION_HEADING_PATTERNS:
         for m in re.finditer(pat, norm):
             if m.end() > best_end:
                 best_end = m.end()

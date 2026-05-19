@@ -183,12 +183,14 @@ def run_rag_chain(
     if retrieval["error_type"]:
         return fallback_response(retrieval["error_type"])
 
-    # Stage 2 — Confidence gate
-    # If confidence is LOW → stop here, return safe fallback
-    if retrieval["should_fallback"]:
-        return fallback_response("low retrieval confidence")
-
     context = retrieval["context"]
+
+    # Stage 2 — Confidence gate
+    # If retrieval found no usable context, stop. If it found some context, let
+    # the prompt decide whether the documents answer the question; this avoids
+    # unhelpful fallbacks for valid law questions with weaker vector scores.
+    if retrieval["should_fallback"] and not (context.law_chunks or context.lease_chunks):
+        return fallback_response("low retrieval confidence")
 
     # Stage 3 — Build prompt (jurisdiction + conversation history in user message)
     messages = build_prompt(

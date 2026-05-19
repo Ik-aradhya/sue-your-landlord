@@ -11,6 +11,18 @@ from typing import Optional
 MAX_HISTORY_TURNS = 6
 MAX_HISTORY_CHARS = 3000
 
+RENT_INCREASE_KEYWORDS = (
+    "rent increase",
+    "increase rent",
+    "increase the rent",
+    "increased",
+    "rent hike",
+    "hike rent",
+    "escalation",
+    "rent revision",
+    "permitted increase",
+)
+
 # ─────────────────────────────────────────────
 # SYSTEM PROMPT
 # ─────────────────────────────────────────────
@@ -103,6 +115,23 @@ STRICT RULES — follow all without exception
     such as requesting written basis, checking whether the lease clause exists,
     or disputing an unsupported demand in writing. Do not draft notices unless
     the user asks.
+
+13. CONSISTENCY ACROSS QUESTION PHRASING
+    If the current question is about rent increase, rent hike, escalation,
+    permitted increase, rent increase notice, or disputing a rent increase,
+    treat it as the same legal cluster. Reconcile the same set of retrieved
+    facts every time:
+    - ordinary or annual rent increase / standard rent rule;
+    - additions, improvements, repairs, taxes, amenities, or other special
+      categories;
+    - court or dispute mechanism, if provided;
+    - lease clause or lease silence.
+    If the retrieved context contains a relevant numeric rate, percentage, cap,
+    or formula, include it in ANSWER. Do not answer only "yes" or only cite a
+    special category when the user asked how much ordinary rent can increase.
+    If the user asks notice for a rent increase and the retrieved context states
+    no notice period but gives a legal mechanism, say no specific notice period
+    is stated in the retrieved lease/law context and explain the mechanism.
 
 
 ════════════════════════════════════════
@@ -267,6 +296,29 @@ def build_lease_context(lease_chunks: list) -> str:
 
     return "\n".join(lines)
 
+
+def is_rent_increase_question(question: str) -> bool:
+    q_lower = (question or "").lower()
+    return any(keyword in q_lower for keyword in RENT_INCREASE_KEYWORDS)
+
+
+def build_issue_guidance(question: str) -> str:
+    if not is_rent_increase_question(question):
+        return ""
+
+    return """
+════ ISSUE GUIDANCE: RENT INCREASE CLUSTER ════
+Use one consistent rent-increase analysis for this question.
+Check the retrieved context for:
+1. ordinary/annual rent increase or standard rent rule;
+2. special categories such as additions, improvements, repairs, taxes, amenities, or services;
+3. court/dispute mechanism;
+4. lease clause or lease silence.
+If a relevant rate/cap/formula appears in the retrieved context, include it in ANSWER.
+If the question asks about notice and the retrieved context has no notice period, do not fallback solely for that reason; say no specific notice period is stated in the retrieved lease/law context and then explain the retrieved legal mechanism.
+════ END ISSUE GUIDANCE ════
+""".strip()
+
 # ─────────────────────────────────────────────
 # RETRIEVAL QUERY BUILDER
 # ─────────────────────────────────────────────
@@ -276,14 +328,24 @@ def build_retrieval_query(question: str, history: Optional[list[dict]] = None) -
     Rewrites the user query to improve retrieval accuracy.
     Adds legal terminology that appears in the law text.
     """
+    rent_increase_canonical_hint = (
+        "standard rent permitted increase annual increase ordinary rent increase "
+        "rent revision escalation percentage rate cap formula per annum court "
+        "fix standard rent permitted increase dispute application additions "
+        "improvements repairs taxes amenities services"
+    )
+
     # Order: longer phrases first where overlap matters (e.g. "increase the rent"
     # does not match substring "increase rent").
     query_hints = {
-        "increase the rent": "standard rent permitted increase annual increase ordinary rent increase enhanced rent rent revision escalation tenant consent notice",
-        "rent increase":     "standard rent permitted increase annual increase ordinary rent increase enhanced rent",
-        "increase rent":     "standard rent permitted increase annual increase ordinary rent increase enhanced rent",
-        "rent hike":         "standard rent permitted increase annual increase ordinary rent increase enhanced rent rent revision escalation",
-        "increased":         "standard rent permitted increase annual increase ordinary rent increase enhanced rent",
+        "increase the rent": rent_increase_canonical_hint,
+        "rent increase":     rent_increase_canonical_hint,
+        "increase rent":     rent_increase_canonical_hint,
+        "rent hike":         rent_increase_canonical_hint,
+        "hike rent":         rent_increase_canonical_hint,
+        "rent revision":     rent_increase_canonical_hint,
+        "permitted increase": rent_increase_canonical_hint,
+        "increased":         rent_increase_canonical_hint,
         "escalation":        "rent escalation revision increase standard rent permitted increase",
         "special addition":  "special additions improvements repairs amenities permitted increase expenses",
         "improvement":       "special additions improvements repairs amenities permitted increase expenses",
@@ -345,11 +407,14 @@ def build_prompt(
     history_block  = build_history_block(history)
     law_context    = build_law_context(law_chunks)
     lease_context  = build_lease_context(lease_chunks)
+    issue_guidance = build_issue_guidance(question)
 
     user_message = f"""
 JURISDICTION: {jurisdiction}
 
 {history_block}
+
+{issue_guidance}
 
 ════ LEGAL CONTEXT (Indian Tenancy Law — {jurisdiction}) ════
 {law_context}
