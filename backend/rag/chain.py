@@ -176,6 +176,7 @@ def is_retrieval_unavailable(reason: str | None) -> bool:
     reason_upper = reason.upper()
     unavailable_markers = [
         "EMBEDDING_FAILED",
+        "LAW_INDEX_EMPTY_OR_UNAVAILABLE",
         "LAW_RETRIEVAL_FAILED",
         "VECTOR_DB_ERROR",
         "PINECONE",

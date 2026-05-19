@@ -107,8 +107,17 @@ def retrieve_chunks(
                 law_score = min(law_score, distance)
 
         if not merged_law:
-            # Law collection returned nothing — don't bail, still try the lease
+            # A populated law index should return nearest chunks for a valid state
+            # filter. Empty law results usually mean the index is not populated,
+            # metadata/state filtering is misconfigured, or Pinecone is degraded.
             print("[WARN] Pinecone returned no law matches for this query.")
+            return {
+                "law_chunks": [],
+                "lease_chunks": [],
+                "law_score": 1.0,
+                "lease_score": 1.0,
+                "error_type": f"LAW_INDEX_EMPTY_OR_UNAVAILABLE: no law matches for state={state}"
+            }
         else:
             # Keep a bounded but richer law context when multi-query retrieval is used.
             max_law_chunks = settings.TOP_K_LAW + (2 * len(extra_law_vectors or []))
