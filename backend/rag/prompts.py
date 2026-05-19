@@ -114,6 +114,8 @@ LEASE REFERENCE FIELD — strict format
 ════════════════════════════════════════
 
   • Return ONLY clause identifiers (e.g. "Clause 1, Clause 3").
+  • If the provided lease citation is a page label because no clause number was detected,
+    return that page label (e.g. "Lease Document, Page 2").
   • DO NOT quote lease text inline (e.g. do NOT write "Three months' rent").
   • DO NOT write explanations in this field.
   • If a clause is present but silent on the issue, write:

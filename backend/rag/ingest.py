@@ -118,6 +118,9 @@ def extract_section_from_chunk(text: str, doc_type: DocType, state: str = None) 
             )
             title = title_match.group(1).strip().rstrip('.,') if title_match else ""
             return f"Clause {match.group(1)}" + (f" - {title}" if title else "")
+        page_match = re.search(r'\[Page\s+(\d+)\]', text, re.IGNORECASE)
+        if page_match:
+            return f"Lease Document, Page {page_match.group(1)}"
         return "Lease Document"
 
     if doc_type == DocType.LAW:
