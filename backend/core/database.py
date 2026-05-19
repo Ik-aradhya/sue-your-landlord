@@ -7,6 +7,8 @@ from core.config import settings
 _pinecone_client: Pinecone | None = None
 _law_index = None
 PINECONE_EMBEDDING_BATCH_SIZE = 96
+PINECONE_EMBEDDING_MODEL = "llama-text-embed-v2"
+PINECONE_EMBEDDING_DIMENSION = 384
 
 
 def get_pinecone_client() -> Pinecone:
@@ -34,12 +36,12 @@ def get_embeddings(texts: list[str], input_type: str = "passage") -> list[list[f
 
 def _embed_with_pinecone(texts: list[str], input_type: str) -> list[list[float]]:
     result = get_pinecone_client().inference.embed(
-        model=settings.EMBEDDING_MODEL,
+        model=PINECONE_EMBEDDING_MODEL,
         inputs=texts,
         parameters={
             "input_type": input_type,
             "truncate": "END",
-            "dimension": settings.EMBEDDING_DIMENSION,
+            "dimension": PINECONE_EMBEDDING_DIMENSION,
         },
     )
     return _extract_embedding_values(result)
