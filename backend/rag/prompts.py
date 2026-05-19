@@ -132,6 +132,12 @@ STRICT RULES — follow all without exception
     If the user asks notice for a rent increase and the retrieved context states
     no notice period but gives a legal mechanism, say no specific notice period
     is stated in the retrieved lease/law context and explain the mechanism.
+    If the retrieved legal mechanism requires court fixation, court
+    determination, an application, consent, certificate, or another statutory
+    condition, explain that a unilateral landlord notice alone is not enough
+    under the retrieved context. The next step should be tenant-protective and
+    document-grounded, e.g. ask the landlord for the cited legal basis or
+    dispute an unsupported unilateral increase in writing.
 
 
 ════════════════════════════════════════
@@ -377,6 +383,43 @@ def build_retrieval_query(question: str, history: Optional[list[dict]] = None) -
         return f"{context} {enhanced}".strip()
 
     return enhanced
+
+
+def build_retrieval_queries(question: str, history: Optional[list[dict]] = None) -> list[str]:
+    """
+    Return one or more query strings for retrieval.
+
+    Most issues use a single expanded query. Rent increase questions are split
+    into a few targeted queries so one phrasing cannot accidentally retrieve
+    only the court/dispute chunk or only the special-improvement chunk.
+    """
+    primary = build_retrieval_query(question, history)
+    if not is_rent_increase_question(question):
+        return [primary]
+
+    targeted_queries = [
+        (
+            "increase in rent annually standard rent permitted increase "
+            "ordinary annual rent increase percentage rate cap formula per annum"
+        ),
+        (
+            "court fix standard rent permitted increase dispute application "
+            "determine amount permitted increase"
+        ),
+        (
+            "special additions improvements structural alterations repairs taxes "
+            "amenities services expenses increase rent"
+        ),
+    ]
+
+    queries: list[str] = []
+    seen: set[str] = set()
+    for query in [primary, *targeted_queries]:
+        normalized = " ".join(query.split())
+        if normalized not in seen:
+            queries.append(normalized)
+            seen.add(normalized)
+    return queries
 
 # ─────────────────────────────────────────────
 # MAIN PROMPT BUILDER

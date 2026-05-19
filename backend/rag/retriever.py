@@ -45,12 +45,14 @@ def embed_query(question: str) -> dict:
 def retrieve_chunks(
     query_vector: list[float],
     state: str,
-    session_id: str
+    session_id: str,
+    extra_law_vectors: Optional[list[list[float]]] = None
 ) -> dict:
     """
     Queries law and lease vectors from Pinecone.
 
-    Input:  query_vector, state (for law filter), session_id (for lease filter)
+    Input:  query_vector, state (for law filter), session_id (for lease filter),
+            optional extra law vectors for issue-specific multi-query retrieval
     Output: { law_chunks, lease_chunks, law_score, lease_score, error_type }
 
     Guarantee: law_chunks contain only state-relevant law.
@@ -67,28 +69,32 @@ def retrieve_chunks(
     try:
         law_index = get_law_index()
 
-        pinecone_results = law_index.query(
-            vector=query_vector,
-            top_k=settings.TOP_K_LAW,
-            filter={"state": state} if state else None,
-            include_metadata=True
-        )
+        law_vectors = [query_vector, *(extra_law_vectors or [])]
+        merged_law: dict[str, tuple[float, Chunk]] = {}
 
-        matches = pinecone_results.get("matches", [])
+        for query_index, law_vector in enumerate(law_vectors):
+            pinecone_results = law_index.query(
+                vector=law_vector,
+                top_k=settings.TOP_K_LAW,
+                filter={"state": state} if state else None,
+                include_metadata=True
+            )
 
-        if not matches:
-            # Law collection returned nothing — don't bail, still try the lease
-            print("[WARN] Pinecone returned no law matches for this query.")
-        else:
+            matches = pinecone_results.get("matches", [])
+
             for i, match in enumerate(matches):
                 metadata = match.get("metadata", {})
                 text = metadata.get("text", "")
                 score = match.get("score", 0.0)
-                # Pinecone returns similarity (higher = better), convert to distance
                 distance = 1.0 - score
+                key = match.get("id") or f"{metadata.get('section', '')}:{text[:160]}"
+
+                existing = merged_law.get(key)
+                if existing and existing[0] >= score:
+                    continue
 
                 chunk = Chunk(
-                    chunk_id=f"law_{i}",
+                    chunk_id=key,
                     text=text,
                     source=DocType.LAW,
                     section=metadata.get("section", "Unknown Section"),
@@ -97,10 +103,23 @@ def retrieve_chunks(
                     start_index=0,
                     end_index=len(text)
                 )
-                law_chunks.append(chunk)
+                merged_law[key] = (score, chunk)
+                law_score = min(law_score, distance)
 
-            if matches:
-                law_score = 1.0 - matches[0]["score"]  # best match = first result
+        if not merged_law:
+            # Law collection returned nothing — don't bail, still try the lease
+            print("[WARN] Pinecone returned no law matches for this query.")
+        else:
+            # Keep a bounded but richer law context when multi-query retrieval is used.
+            max_law_chunks = settings.TOP_K_LAW + (2 * len(extra_law_vectors or []))
+            law_chunks = [
+                chunk
+                for score, chunk in sorted(
+                    merged_law.values(),
+                    key=lambda item: item[0],
+                    reverse=True
+                )[:max_law_chunks]
+            ]
 
     except Exception as e:
         return {
@@ -212,6 +231,7 @@ def run_retrieval(
     state: str,
     session_id: str,
     retrieval_query: Optional[str] = None,
+    retrieval_queries: Optional[list[str]] = None,
 ) -> dict:
     """
     Master function: runs the full retrieval pipeline.
@@ -219,8 +239,9 @@ def run_retrieval(
 
     This is the only function chain.py needs to call.
 
-    If retrieval_query is set, it is used for embedding only (e.g. history-augmented
-    query). The user's literal question is still passed separately for prompting.
+    If retrieval_query/retrieval_queries is set, it is used for embedding only
+    (e.g. history-augmented or issue-specific queries). The user's literal
+    question is still passed separately for prompting.
 
     Output: {
         context: RetrievedContext | None,
@@ -229,12 +250,24 @@ def run_retrieval(
     }
     """
 
-    # Stage 1 — Embed for vector search (optional context-augmented string)
-    embed_text = (retrieval_query if retrieval_query is not None else question).strip()
-    if len(embed_text) > 500:
-        embed_text = embed_text[-500:].strip()
+    # Stage 1 — Embed for vector search (optional context-augmented strings)
+    raw_queries = retrieval_queries or [retrieval_query if retrieval_query is not None else question]
+    embed_texts = []
+    for raw_query in raw_queries:
+        embed_text = (raw_query or "").strip()
+        if len(embed_text) > 500:
+            embed_text = embed_text[-500:].strip()
+        if embed_text:
+            embed_texts.append(embed_text)
 
-    embedding_result = embed_query(embed_text)
+    if not embed_texts:
+        return {
+            "context": None,
+            "should_fallback": True,
+            "error_type": "EMPTY_QUERY"
+        }
+
+    embedding_result = embed_query(embed_texts[0])
     if embedding_result["error_type"]:
         return {
             "context": None,
@@ -242,11 +275,19 @@ def run_retrieval(
             "error_type": embedding_result["error_type"]
         }
 
+    extra_law_vectors = []
+    for embed_text in embed_texts[1:]:
+        extra_embedding_result = embed_query(embed_text)
+        if extra_embedding_result["error_type"]:
+            continue
+        extra_law_vectors.append(extra_embedding_result["query_vector"])
+
     # Stage 2 — Retrieve from both collections
     retrieval_result = retrieve_chunks(
         query_vector=embedding_result["query_vector"],
         state=state,
-        session_id=session_id
+        session_id=session_id,
+        extra_law_vectors=extra_law_vectors
     )
     if retrieval_result["error_type"]:
         return {

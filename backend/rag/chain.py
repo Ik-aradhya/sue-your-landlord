@@ -5,7 +5,7 @@ from langchain_groq import ChatGroq
 from core.config import settings
 from core.session_store import session_store
 from models.schemas import RAGResponse, Confidence
-from rag.prompts import build_prompt, build_retrieval_query
+from rag.prompts import build_prompt, build_retrieval_queries
 from rag.retriever import run_retrieval
 
 # Initialise LLM once at module level
@@ -170,14 +170,15 @@ def run_rag_chain(
     if history is None:
         history = session_store.get_history(session_id)
 
-    # Rewritten query (hints + history) is embedded for retrieval; `question` alone is for the LLM.
-    retrieval_query = build_retrieval_query(question, history)
+    # Rewritten queries are embedded for retrieval; `question` alone is for the LLM.
+    retrieval_queries = build_retrieval_queries(question, history)
 
-    # Stage 1 — Retrieve (embedding uses rewritten / history-augmented query)
+    # Stage 1 — Retrieve (embedding uses rewritten / history-augmented queries)
     retrieval = run_retrieval(
-        question=retrieval_query,
+        question=retrieval_queries[0],
         state=state,
         session_id=session_id,
+        retrieval_queries=retrieval_queries,
     )
 
     if retrieval["error_type"]:
