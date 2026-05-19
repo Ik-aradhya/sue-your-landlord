@@ -11,7 +11,8 @@ class Settings(BaseSettings):
     PINECONE_INDEX_NAME: str = "sue-your-landlord"
     HF_TOKEN: Optional[str] = None
     LLM_MODEL: str = "llama-3.3-70b-versatile" 
-    EMBEDDING_MODEL: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    EMBEDDING_MODEL: str = "llama-text-embed-v2"
+    EMBEDDING_DIMENSION: int = 384
     MAX_FILE_SIZE_MB: int = 10
     TOP_K_LAW: int = 5
     TOP_K_LEASE: int = 3

@@ -29,7 +29,7 @@ def embed_query(question: str) -> dict:
         }
 
     try:
-        vector = get_embedding(question.strip())
+        vector = get_embedding(question.strip(), input_type="query")
         return {
             "query_vector": vector,
             "error_type": None

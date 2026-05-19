@@ -507,7 +507,7 @@ async def run_ingestion_pipeline(
     # STEP 4 — STORE EMBEDDINGS
     try:
         documents = [chunk.text for chunk in chunks]
-        embeddings = get_embeddings(documents)
+        embeddings = get_embeddings(documents, input_type="passage")
         ids = [chunk.chunk_id for chunk in chunks]
 
         # Store full metadata — session_id is critical for lease retrieval
