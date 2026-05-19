@@ -1,11 +1,9 @@
 [phases.setup]
-nixPkgs = ["tesseract", "tesseract-data-eng", "poppler_utils"]
+aptPkgs = ["...", "tesseract-ocr", "tesseract-ocr-eng", "poppler-utils"]
 
 [phases.build]
 cmds = [
+  "which tesseract && tesseract --list-langs | grep -q '^eng$'",
   "pip install -r requirements.txt",
   "python -c \"from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')\""
 ]
-
-[variables]
-TESSDATA_PREFIX = "/usr/share/tesseract-ocr/5/tessdata"
