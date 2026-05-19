@@ -1,6 +1,6 @@
 from typing import Optional
 
-from core.database import get_law_index, get_lease_collection, get_embedding
+from core.database import get_law_index, get_embedding
 from core.config import settings
 from models.schemas import Chunk, RetrievedContext, Confidence, DocType
 
@@ -48,14 +48,14 @@ def retrieve_chunks(
     session_id: str
 ) -> dict:
     """
-    Queries both ChromaDB collections in parallel.
+    Queries law and lease vectors from Pinecone.
 
     Input:  query_vector, state (for law filter), session_id (for lease filter)
     Output: { law_chunks, lease_chunks, law_score, lease_score, error_type }
 
     Guarantee: law_chunks contain only state-relevant law.
                 lease_chunks contain only this user's lease.
-                never mixes collections.
+                never mixes lease namespaces.
     """
 
     law_chunks = []
@@ -111,65 +111,34 @@ def retrieve_chunks(
             "error_type": f"LAW_RETRIEVAL_FAILED: {str(e)}"
         }
 
-    # ── Step 2: Query lease collection ───────────────────────────
+    # ── Step 2: Query lease namespace ───────────────────────────
     try:
-        lease_collection = get_lease_collection(session_id)
-        
-        # --- DEBUG CHECK ---
-        all_lease = lease_collection.get(include=["metadatas"])
-        print(f"\n[DEBUG] INCOMING session_id from /chat: {session_id}")
-        print(f"[DEBUG] All session_ids in lease collection (showing up to 10):")
-        unique_sessions = set()
-        if all_lease and "metadatas" in all_lease and all_lease["metadatas"]:
-            for m in all_lease["metadatas"]:
-                if m:
-                    unique_sessions.add(m.get("session_id"))
-        for s in list(unique_sessions)[:10]:
-            print(f"  → {s}")
-        print("--------------------------------------------------\n")
+        from core.database import get_pinecone_index
+        index = get_pinecone_index()
+        lease_results = index.query(
+            vector=query_vector,
+            namespace=session_id,
+            top_k=settings.TOP_K_LEASE,
+            include_metadata=True
+        )
 
-        if session_id:
-            # FIX — count only chunks belonging to this session before querying
-            # ChromaDB crashes if n_results > number of matching documents
-            session_count = lease_collection.count()
+        lease_chunks = []
+        for match in lease_results.matches:
+            text = match.metadata.get("text", "")
+            chunk = Chunk(
+                chunk_id=match.id,
+                text=text,
+                source=DocType.LEASE,
+                section=match.metadata.get("section", ""),
+                state=None,
+                session_id=session_id,
+                start_index=0,
+                end_index=len(text)
+            )
+            lease_chunks.append(chunk)
 
-            if session_count > 0:
-                # Get actual count for this session_id
-                session_matches = lease_collection.get(
-                    where={"session_id": session_id},
-                    include=["documents"]
-                )
-                actual_count = len(session_matches["documents"])
-
-                if actual_count > 0:
-                    # Chroma rejects n_results=0; misconfigured TOP_K_LEASE must not empty lease silently
-                    n_results_lease = max(1, min(settings.TOP_K_LEASE, actual_count))
-
-                    lease_results = lease_collection.query(
-                        query_embeddings=[query_vector],
-                        where={"session_id": session_id},
-                        n_results=n_results_lease,
-                        include=["documents", "metadatas", "distances"]
-                    )
-
-                    for i, doc in enumerate(lease_results["documents"][0]):
-                        metadata = lease_results["metadatas"][0][i] or {}
-                        distance = lease_results["distances"][0][i]
-
-                        chunk = Chunk(
-                            chunk_id=f"lease_{i}",
-                            text=doc,
-                            source=DocType.LEASE,
-                            section=metadata.get("section", "Lease Clause"),
-                            state=None,
-                            session_id=session_id,
-                            start_index=0,
-                            end_index=len(doc)
-                        )
-                        lease_chunks.append(chunk)
-
-                    if lease_results["distances"][0]:
-                        lease_score = min(lease_results["distances"][0])
+        if lease_results.matches:
+            lease_score = 1.0 - lease_results.matches[0].score
 
     except Exception as e:
         # FIX — log the real error so it is never silently swallowed
@@ -198,7 +167,7 @@ def compute_confidence(
     Input:  distance scores + chunk lists
     Output: Confidence enum (HIGH | MEDIUM | LOW)
 
-    Remember: ChromaDB returns DISTANCE not similarity.
+    Pinecone returns similarity; retrieve_chunks converts it to distance.
     Lower distance = more similar = better match.
 
     Thresholds (from config):

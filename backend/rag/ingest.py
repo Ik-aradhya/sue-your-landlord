@@ -4,6 +4,7 @@ from typing import Optional
 import fitz                        # PyMuPDF
 from fastapi import UploadFile
 import pytesseract
+import shutil
 import io
 from pdf2image import convert_from_bytes
 from PIL import Image
@@ -12,9 +13,13 @@ from models.schemas import Chunk, DocType
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 import uuid
-from core.database import get_law_index, get_lease_collection, get_embedding
+from core.database import get_law_index, get_embedding
 
 MAX_BYTES = settings.MAX_FILE_SIZE_MB * 1024 * 1024  # 10MB in bytes
+
+tesseract_path = shutil.which("tesseract")
+if tesseract_path:
+    pytesseract.pytesseract.tesseract_cmd = tesseract_path
 
 
 # =============================================================================
@@ -524,13 +529,20 @@ async def run_ingestion_pipeline(
             for i in range(0, len(vectors), batch_size):
                 law_index.upsert(vectors=vectors[i:i+batch_size])
         else:
-            collection = get_lease_collection(session_id)
-            collection.add(
-                ids=ids,
-                documents=documents,
-                embeddings=embeddings,
-                metadatas=metadatas
-            )
+            from core.database import get_pinecone_index
+            index = get_pinecone_index()
+            vectors = [
+                {
+                    "id": chunks[i].chunk_id,
+                    "values": embeddings[i],
+                    "metadata": {
+                        **metadatas[i],
+                        "text": chunks[i].text
+                    }
+                }
+                for i in range(len(chunks))
+            ]
+            index.upsert(vectors=vectors, namespace=session_id)
 
     except Exception as e:
         return {

@@ -1,5 +1,5 @@
 import uuid
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, BackgroundTasks, UploadFile, File, Form, HTTPException
 from rag.ingest import run_ingestion_pipeline
 from rag.chain import run_rag_chain
 from models.schemas import (
@@ -59,7 +59,7 @@ async def upload_lease(
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, background_tasks: BackgroundTasks):
     """
     Receives a question + session_id + state.
     Runs the full RAG chain.
@@ -82,12 +82,14 @@ async def chat(request: ChatRequest):
             detail=f"State must be one of: {valid_states}"
         )
 
-    # Run RAG chain (strip session_id so Chroma where-clause matches ingested UUIDs)
+    # Run RAG chain with the lease namespace keyed by this session_id.
     response = run_rag_chain(
         question=request.question.strip(),
         state=request.state.lower(),
         session_id=request.session_id.strip(),
     )
+
+    background_tasks.add_task(delete_lease_namespace, request.session_id.strip())
 
     return ChatResponse(
         answer=response.answer,
@@ -98,6 +100,15 @@ async def chat(request: ChatRequest):
         conflict_flag=response.conflict_flag,
         error_type=response.error_type
     )
+
+
+def delete_lease_namespace(session_id: str):
+    try:
+        from core.database import get_pinecone_index
+        index = get_pinecone_index()
+        index.delete(delete_all=True, namespace=session_id)
+    except Exception:
+        pass
 
 
 def _error_message(error_type: str) -> str:
