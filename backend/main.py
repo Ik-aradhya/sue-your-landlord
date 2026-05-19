@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from api.routes import router
 
@@ -24,3 +24,8 @@ app.include_router(router, prefix="/api/v1")
 @app.get("/health")
 async def health():
     return {"status": "ok", "product": "Sue Your Landlord v1"}
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(status_code=204)
