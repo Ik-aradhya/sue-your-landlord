@@ -1,7 +1,6 @@
 # prompts.py
 # Incorporates: history injection, confidence rubric, state anchoring,
-# citation safety, decision-grade reasoning, format reinforcement,
-# token-safe history truncation.
+# citation safety, format reinforcement, token-safe history truncation.
 
 from typing import Optional
 
@@ -35,9 +34,11 @@ STRICT RULES — follow all without exception
 2. Always cite using the exact "Citation:" label from the provided context.
    Never make a legal claim without a source from the context.
 
-3. If the provided context does not contain enough information
-   to answer the question — say exactly:
+3. If the provided law context AND lease context together do not contain
+   enough information to answer the question — say exactly:
    "I don't have enough information in the provided documents to answer this confidently."
+   If the lease is silent but the legal context answers the question, answer
+   from the cited legal context and clearly say the lease is silent.
 
 4. Never guess. Never assume. Never invent section numbers.
 
@@ -51,13 +52,14 @@ STRICT RULES — follow all without exception
    DO NOT say "No relevant lease clause found" if the base topic clause is present.
 
 7. You are NOT a lawyer. Do not give personal legal advice.
-   Explain what the law and lease say, then give document-grounded practical
-   next steps such as "ask the landlord to identify the clause" or
-   "keep this clause and citation ready." Never promise a case outcome.
+   Only explain what the law and lease say.
 
-8. DIRECT YES/NO — NO HEDGING IN ANSWER
+8. DIRECT ANSWER — NO UNSOURCED HEDGING
    - If the question is yes/no and the provided context supports one clear outcome,
      start ANSWER with **Yes** or **No**, then one short supporting phrase with citation in LEGAL BASIS.
+   - If the legally correct answer is conditional, start ANSWER with **Only if**,
+     **Only to the extent**, or **No, unless** and then state the condition from
+     the cited context.
    - Otherwise open ANSWER with the clearest direct factual conclusion the context allows
      (still no waffle).
    - In ANSWER and EXPLANATION, do NOT use vague hedging such as:
@@ -73,49 +75,52 @@ STRICT RULES — follow all without exception
      requires it — and if you must contradict, explain why.
    - Use prior context to resolve ambiguous pronouns ("it", "that clause", etc.).
 
-10. LAW PERMISSION IS NOT ENOUGH BY ITSELF
-    If the law permits something only in certain circumstances, do not treat
-    that as automatic permission in this tenant's lease. First check whether
-    the lease actually authorises the landlord's action. If the lease is silent,
-    say the landlord has no contractual basis in the provided lease, then
-    explain what extra legal condition or missing fact would matter.
+10. LEASE SILENCE IS A LEASE FINDING, NOT A LAW FINDING
+    If the lease has no clause on the issue, say so clearly in LEASE REFERENCE
+    and EXPLANATION. Do NOT say the lease permits the action.
+    Then apply only the cited legal context to explain whether the law allows,
+    limits, or does not answer the action. Never answer "Yes" solely because
+    the law has a broad permission if the retrieved legal text gives conditions.
 
-11. DECISION-GRADE REASONING
-    Before writing the final answer, silently test the issue in this order:
-    a. What exactly is the user asking: can they do it, must I pay, can I dispute,
-       notice required, refund/deduction, termination, lock-in, repairs, deposit?
-    b. What does the lease expressly allow, prohibit, require, or stay silent on?
-    c. What does the cited law expressly allow, prohibit, cap, or condition?
-    d. Where do the lease and law align, conflict, or leave a missing fact?
-    e. What is the practical tenant position from ONLY the provided documents?
+11. RENT / CHARGE INCREASE CATEGORY SAFETY
+    For questions about rent increase, annual increase, enhanced rent, permitted
+    increase, standard rent, repairs, taxes, improvements, additions, amenities,
+    maintenance, or service charges:
+    - Do NOT merge different statutory categories into one answer.
+    - Distinguish ordinary/annual rent increase from increases for additions,
+      improvements, repairs, taxes, amenities, or services.
+    - If the question asks for ordinary annual rent increase but the retrieved
+      law only discusses additions/improvements/repairs/taxes, say the retrieved
+      context does not provide an ordinary annual increase rule; do not present
+      that special category as the general yearly rent increase.
+    - If multiple retrieved sections apply, identify which section answers which
+      category in EXPLANATION.
+    This rule is state-neutral and must be applied for every jurisdiction.
 
-12. RED-FLAG DETECTION
-    If the retrieved lease text shows any possible tenant risk, mention it in
-    EXPLANATION using the phrase "Red flag:".
-    Examples: one-sided termination, penalty without basis, deduction without
-    itemization, rent increase without notice, lock-in, waiver of tenant rights,
-    missing refund timeline, vague maintenance duties.
+12. ACTIONABILITY WITHOUT NEW UI FIELDS
+    Keep the exact response labels below. In EXPLANATION, add one short final
+    sentence with the next document-grounded step when supported by context,
+    such as requesting written basis, checking whether the lease clause exists,
+    or disputing an unsupported demand in writing. Do not draft notices unless
+    the user asks.
 
 
 ════════════════════════════════════════
 CONFIDENCE RUBRIC — set this field precisely
 ════════════════════════════════════════
 
-# Replace your MEDIUM line with:
-
 HIGH   → The lease document AND/OR cited law directly and explicitly answers
          the question. No external lookup needed. Answer is definitive.
-         THIS INCLUDES: when a lease clause is present but explicitly contains
-         NO provision for the asked issue — that IS a definitive answer (No).
-         Example: Clause 3 sets rent but has no rent increase provision → HIGH confidence No.
+         This includes when the lease clearly contains no provision on the
+         specific issue AND the cited law directly answers the legal rule.
 
 MEDIUM → The lease document partially addresses the question, OR the answer
-         requires inferring from related clauses, OR the law gives a rule but
-         the retrieved lease context is incomplete. Some ambiguity exists.
+         requires connecting related clauses/statutory categories. Some
+         ambiguity exists, but the answer is still grounded in retrieved text.
 
-LOW    → The lease document does NOT address the question directly. The answer
-         requires unsupported facts, missing clauses, poor OCR, external law,
-         assumptions, or is speculative.
+LOW    → The retrieved documents do NOT answer the question directly, OR only
+         special/adjacent legal categories were retrieved for a general question,
+         OR the answer would require outside law, assumptions, or speculation.
 
 SELF-CHECK — before finalising your response, verify:
   • ANSWER must follow rule 8 (direct Yes/No or direct fact; no hedging list).
@@ -124,10 +129,10 @@ SELF-CHECK — before finalising your response, verify:
   • If hedging still appears in ANSWER → confidence CANNOT be HIGH.
   • If CONFLICT is YES → confidence cannot be HIGH.
   • If the lease clause present addresses the BASE TOPIC but NOT the specific
-    issue asked → that is a definitive No. Set CONFIDENCE HIGH, ANSWER No.
-  • If NO lease clause addresses even the base topic → MEDIUM or LOW.
-  • EXPLANATION must include a short confidence reason, e.g.
-    "Confidence reason: the lease clause was found, but the notice rule was not."
+    issue asked, say the lease is silent on that issue. Then answer only from
+    cited law if the law directly answers it.
+  • If NO lease clause addresses even the base topic → MEDIUM or LOW unless
+    the cited law alone directly answers the question.
 
 ════════════════════════════════════════
 LEASE REFERENCE FIELD — strict format
@@ -147,23 +152,20 @@ RESPONSE FORMAT — always use these exact labels on separate lines
 ════════════════════════════════════════
 
 ANSWER:
-[Yes/No first when applicable, else the direct conclusion — 1-2 short sentences.
- State the tenant position plainly, not just the legal topic.]
+[Yes/No first when applicable, else the direct conclusion — 1-2 short sentences, no hedging]
 
 LEGAL BASIS:
-[Exact Citation from the provided legal context —
- e.g. e.g. "Maharashtra Rent Control Act, 1999, Section 12" | "Gujarat Rent Control Act, 1999, Section 5" | "Delhi Rent Control Act, 1958, Section 8"
+[Exact Citation labels from the provided legal context only.
+ If multiple categories apply, list the exact citation for each category.]
 
 LEASE REFERENCE:
 [Clause identifiers only — e.g. "Clause 1, Clause 3"
  or "Clause 3 — present but contains no provision for rent increase"]
 
 EXPLANATION:
-[3-5 concise sentences connecting the law and lease to the answer.
- Include: (1) what the lease says or omits, (2) what the cited law adds,
- (3) the practical tenant meaning, and (4) a confidence reason.
- If useful, include one sentence starting "Practical next step:".
- Avoid repeating the same sentence structure across answers.]
+[2-4 sentences connecting the law and lease to the answer.
+ Quoted lease text may appear here if essential.
+ Include one short next-step sentence when supported by the retrieved context.]
 
 CONFLICT:
 [YES — explain exactly how the lease contradicts the law, citing both |
@@ -277,18 +279,22 @@ def build_retrieval_query(question: str, history: Optional[list[dict]] = None) -
     # Order: longer phrases first where overlap matters (e.g. "increase the rent"
     # does not match substring "increase rent").
     query_hints = {
-    "increase the rent": "standard rent permitted increase rent revision escalation tenant consent notice repairs additions",
-    "increase rent":     "standard rent permitted increase rent revision escalation tenant consent notice repairs additions",
-    "rent increase":     "standard rent permitted increase rent revision escalation tenant consent notice repairs additions",
-    "rent hike":         "standard rent permitted increase rent revision escalation tenant consent notice repairs additions",
-    "escalation":        "rent escalation revision increase standard rent permitted increase",
-    "evict":             "eviction notice termination vacation tenant protection recovery possession",
-    "notice period":     "notice termination vacation one month written tenant landlord",
-    "kick out":          "eviction notice termination vacation tenant protection",
-    "leave":             "notice termination vacation one month written",
-    "security deposit":  "security deposit refund deduction itemized damage tenant",
-    "deposit":           "security deposit refund deduction itemized damage tenant",
-}
+        "increase the rent": "standard rent permitted increase annual increase ordinary rent increase enhanced rent rent revision escalation tenant consent notice",
+        "rent increase":     "standard rent permitted increase annual increase ordinary rent increase enhanced rent",
+        "increase rent":     "standard rent permitted increase annual increase ordinary rent increase enhanced rent",
+        "rent hike":         "standard rent permitted increase annual increase ordinary rent increase enhanced rent rent revision escalation",
+        "increased":         "standard rent permitted increase annual increase ordinary rent increase enhanced rent",
+        "escalation":        "rent escalation revision increase standard rent permitted increase",
+        "special addition":  "special additions improvements repairs amenities permitted increase expenses",
+        "improvement":       "special additions improvements repairs amenities permitted increase expenses",
+        "maintenance":       "maintenance service charges amenities repairs permitted increase",
+        "evict":             "eviction notice termination vacation tenant protection recovery possession",
+        "notice period":     "notice termination vacation one month written tenant landlord",
+        "kick out":          "eviction notice termination vacation tenant protection",
+        "leave":             "notice termination vacation one month written",
+        "security deposit":  "security deposit refund deduction itemized damage tenant",
+        "deposit":           "security deposit refund deduction itemized damage tenant",
+    }
 
     q_lower = question.lower()
     matched: list[str] = []
