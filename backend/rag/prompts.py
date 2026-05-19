@@ -23,6 +23,17 @@ RENT_INCREASE_KEYWORDS = (
     "permitted increase",
 )
 
+RECEIPT_PAYMENT_KEYWORDS = (
+    "receipt",
+    "rent receipt",
+    "cash",
+    "paid rent",
+    "payment proof",
+    "proof of payment",
+    "no proof",
+    "no receipt",
+)
+
 # ─────────────────────────────────────────────
 # SYSTEM PROMPT
 # ─────────────────────────────────────────────
@@ -138,6 +149,27 @@ STRICT RULES — follow all without exception
     under the retrieved context. The next step should be tenant-protective and
     document-grounded, e.g. ask the landlord for the cited legal basis or
     dispute an unsupported unilateral increase in writing.
+    Do not write that the law "does not provide a specific percentage or
+    procedure" when the retrieved context contains any percentage, cap, formula,
+    court mechanism, consent requirement, certificate requirement, or other
+    procedure. If the retrieved rule is only for a special category, say it is
+    limited to that category and cannot by itself validate a general verbal rent
+    increase.
+
+14. RENT RECEIPT / CASH PAYMENT SAFETY
+    If the current question is about paying rent in cash, missing receipts,
+    proof of payment, or rent receipts, treat it as the receipt/payment cluster.
+    Check the retrieved context for a statutory duty to issue written receipts,
+    punishment/fine for failure, and any lease silence. If the retrieved law says
+    the landlord must issue a written receipt, frame the answer as the landlord's
+    obligation and possible violation, not as the tenant being unprotected.
+    For questions phrased as "am I protected?" or "I paid cash but have no
+    receipt", do not start with "No" solely because the tenant lacks a receipt.
+    Lead with the statutory duty if it appears in the retrieved context.
+    Suggested next steps should be document-grounded: request a written receipt,
+    preserve bank/UPI messages, witnesses, chats, or other proof if available,
+    and consider filing/raising a complaint if the retrieved law provides a
+    penalty for failure to issue receipts.
 
 
 ════════════════════════════════════════
@@ -308,11 +340,16 @@ def is_rent_increase_question(question: str) -> bool:
     return any(keyword in q_lower for keyword in RENT_INCREASE_KEYWORDS)
 
 
-def build_issue_guidance(question: str) -> str:
-    if not is_rent_increase_question(question):
-        return ""
+def is_receipt_payment_question(question: str) -> bool:
+    q_lower = (question or "").lower()
+    return any(keyword in q_lower for keyword in RECEIPT_PAYMENT_KEYWORDS)
 
-    return """
+
+def build_issue_guidance(question: str) -> str:
+    guidance_blocks: list[str] = []
+
+    if is_rent_increase_question(question):
+        guidance_blocks.append("""
 ════ ISSUE GUIDANCE: RENT INCREASE CLUSTER ════
 Use one consistent rent-increase analysis for this question.
 Check the retrieved context for:
@@ -322,8 +359,25 @@ Check the retrieved context for:
 4. lease clause or lease silence.
 If a relevant rate/cap/formula appears in the retrieved context, include it in ANSWER.
 If the question asks about notice and the retrieved context has no notice period, do not fallback solely for that reason; say no specific notice period is stated in the retrieved lease/law context and then explain the retrieved legal mechanism.
+Do not write that the law lacks a specific percentage or procedure if the retrieved context contains any rent-increase rate, cap, court mechanism, consent requirement, certificate requirement, or other statutory procedure. If the retrieved rule is only for a special category, say it is limited to that category and cannot by itself validate a general verbal rent increase.
 ════ END ISSUE GUIDANCE ════
-""".strip()
+""".strip())
+
+    if is_receipt_payment_question(question):
+        guidance_blocks.append("""
+════ ISSUE GUIDANCE: RECEIPT / CASH PAYMENT CLUSTER ════
+Use one consistent receipt/payment analysis for this question.
+Check the retrieved context for:
+1. a landlord duty to issue written receipts for amounts received;
+2. penalty or fine for failure to issue receipts;
+3. lease clause or lease silence on payment receipts;
+4. practical proof of payment the tenant may preserve.
+If the retrieved law says the landlord must issue a written receipt, frame the issue as the landlord's statutory obligation and possible violation. Do not answer as though the tenant is simply unprotected because the landlord failed to provide the receipt.
+For "am I protected?" wording, do not start with "No" solely because the tenant lacks a receipt; lead with the retrieved statutory duty to issue a written receipt.
+════ END ISSUE GUIDANCE ════
+""".strip())
+
+    return "\n\n".join(guidance_blocks)
 
 # ─────────────────────────────────────────────
 # RETRIEVAL QUERY BUILDER
@@ -362,6 +416,11 @@ def build_retrieval_query(question: str, history: Optional[list[dict]] = None) -
         "leave":             "notice termination vacation one month written",
         "security deposit":  "security deposit refund deduction itemized damage tenant",
         "deposit":           "security deposit refund deduction itemized damage tenant",
+        "rent receipt":      "giving receipt amount received compulsory written receipt landlord failure fine rent payment cash proof",
+        "receipt":           "giving receipt amount received compulsory written receipt landlord failure fine rent payment cash proof",
+        "cash":              "giving receipt amount received compulsory written receipt landlord failure fine rent payment cash proof",
+        "paid rent":         "giving receipt amount received compulsory written receipt landlord failure fine rent payment cash proof",
+        "payment proof":     "giving receipt amount received compulsory written receipt landlord failure fine rent payment cash proof",
     }
 
     q_lower = question.lower()
@@ -394,23 +453,29 @@ def build_retrieval_queries(question: str, history: Optional[list[dict]] = None)
     only the court/dispute chunk or only the special-improvement chunk.
     """
     primary = build_retrieval_query(question, history)
-    if not is_rent_increase_question(question):
+    if is_receipt_payment_question(question):
+        targeted_queries = [
+            "giving receipt for any amount received compulsory written receipt landlord",
+            "landlord fails to give written receipt amount received fine default",
+            "rent receipt cash payment proof tenant paid rent receipt",
+        ]
+    elif is_rent_increase_question(question):
+        targeted_queries = [
+            (
+                "increase in rent annually standard rent permitted increase "
+                "ordinary annual rent increase percentage rate cap formula per annum"
+            ),
+            (
+                "court fix standard rent permitted increase dispute application "
+                "determine amount permitted increase"
+            ),
+            (
+                "special additions improvements structural alterations repairs taxes "
+                "amenities services expenses increase rent"
+            ),
+        ]
+    else:
         return [primary]
-
-    targeted_queries = [
-        (
-            "increase in rent annually standard rent permitted increase "
-            "ordinary annual rent increase percentage rate cap formula per annum"
-        ),
-        (
-            "court fix standard rent permitted increase dispute application "
-            "determine amount permitted increase"
-        ),
-        (
-            "special additions improvements structural alterations repairs taxes "
-            "amenities services expenses increase rent"
-        ),
-    ]
 
     queries: list[str] = []
     seen: set[str] = set()

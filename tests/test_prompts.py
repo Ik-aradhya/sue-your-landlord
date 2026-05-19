@@ -76,3 +76,20 @@ def test_non_rent_issue_uses_single_retrieval_query():
     queries = build_retrieval_queries("Is my security deposit refundable?")
 
     assert len(queries) == 1
+
+
+def test_receipt_payment_prompt_gets_issue_guidance():
+    guidance = build_issue_guidance("I paid rent in cash but have no receipt. Am I protected?")
+
+    assert "RECEIPT / CASH PAYMENT CLUSTER" in guidance
+    assert "landlord's statutory obligation" in guidance
+    assert "do not start with \"No\"" in guidance
+
+
+def test_receipt_payment_uses_multi_query_retrieval():
+    queries = build_retrieval_queries("I paid rent in cash but have no receipt. Am I protected?")
+
+    assert len(queries) == 4
+    assert any("giving receipt for any amount received compulsory" in query for query in queries)
+    assert any("fails to give written receipt" in query for query in queries)
+    assert any("rent receipt cash payment proof" in query for query in queries)
