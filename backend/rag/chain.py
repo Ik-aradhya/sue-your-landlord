@@ -59,18 +59,29 @@ def format_response(
         return ""
 
     def clean_lease_reference(raw: str) -> str:
-        """Strips quotes and collapses extra whitespace from lease reference."""
+        """Strips wrapping quotes and collapses extra whitespace from lease reference."""
         if not raw:
             return raw
-        cleaned = re.sub(r'"[^"]*"', '', raw)
+        cleaned = raw.strip().strip('"').strip("'").strip("“”‘’")
         cleaned = re.sub(r'\s{2,}', ' ', cleaned).strip().strip(',').strip()
         return cleaned
+
+    def parse_confidence(raw: str) -> Optional[Confidence]:
+        value = raw.strip().upper()
+        if value.startswith("HIGH"):
+            return Confidence.HIGH
+        if value.startswith("MEDIUM"):
+            return Confidence.MEDIUM
+        if value.startswith("LOW"):
+            return Confidence.LOW
+        return None
 
     answer       = extract_field("ANSWER", llm_output)
     legal_basis  = extract_field("LEGAL BASIS", llm_output)
     lease_ref    = clean_lease_reference(extract_field("LEASE REFERENCE", llm_output))
     explanation  = extract_field("EXPLANATION", llm_output)
     conflict_raw = extract_field("CONFLICT", llm_output)
+    llm_confidence = parse_confidence(extract_field("CONFIDENCE", llm_output))
 
     # If parsing failed — return safe fallback
     if not answer:
@@ -104,7 +115,11 @@ def format_response(
     answer_lower = answer.lower()
     hedged = any(phrase in answer_lower for phrase in HEDGE_PHRASES)
 
-    final_confidence = confidence
+    final_confidence = llm_confidence or confidence
+
+    if final_confidence == Confidence.HIGH and not (legal_basis or lease_ref):
+        final_confidence = Confidence.MEDIUM
+
     if final_confidence == Confidence.HIGH and (hedged or conflict_flag):
         final_confidence = Confidence.MEDIUM
 
