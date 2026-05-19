@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "llama-text-embed-v2"
     EMBEDDING_DIMENSION: int = 384
     MAX_FILE_SIZE_MB: int = 10
+    LEASE_VECTOR_TTL_MINUTES: int = 60
     TOP_K_LAW: int = 5
     TOP_K_LEASE: int = 3
     CONFIDENCE_STRONG: float = 0.40   # distance threshold

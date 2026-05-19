@@ -13,7 +13,7 @@ from models.schemas import Chunk, DocType
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 import uuid
-from core.database import get_law_index, get_embeddings
+from core.database import get_law_index, get_embeddings, lease_expires_at
 
 MAX_BYTES = settings.MAX_FILE_SIZE_MB * 1024 * 1024  # 10MB in bytes
 OCR_DPI = 200
@@ -513,12 +513,15 @@ async def run_ingestion_pipeline(
         embeddings = get_embeddings(documents, input_type="passage")
         ids = [chunk.chunk_id for chunk in chunks]
 
+        lease_expires = lease_expires_at() if doc_type == DocType.LEASE else None
+
         # Store full metadata — session_id is critical for lease retrieval
         metadatas = [{
             "source":      chunk.source.value,
             "section":     chunk.section or "",     # ✅ now has real section name
             "state":       chunk.state or "",
             "session_id":  chunk.session_id or "",  # ✅ required for lease retrieval
+            "lease_expires_at": lease_expires or 0,
             "start_index": chunk.start_index,
             "end_index":   chunk.end_index
         } for chunk in chunks]

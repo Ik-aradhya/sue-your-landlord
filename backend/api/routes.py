@@ -1,7 +1,10 @@
 import uuid
+import asyncio
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from rag.ingest import run_ingestion_pipeline
 from rag.chain import run_rag_chain
+from core.config import settings
+from core.database import cleanup_expired_lease_namespaces, delete_lease_namespace
 from models.schemas import (
     DocType, ChatRequest, ChatResponse, UploadResponse
 )
@@ -29,6 +32,8 @@ async def upload_lease(
             detail=f"State must be one of: {valid_states}"
         )
 
+    cleanup_expired_lease_namespaces()
+
     # FIX 3 — session_id generated ONCE here and passed into the pipeline
     session_id = str(uuid.uuid4())
 
@@ -46,6 +51,8 @@ async def upload_lease(
             error_type=result["error_type"],
             message=_error_message(result["error_type"])
         )
+
+    asyncio.create_task(_delete_lease_namespace_later(session_id))
 
     return UploadResponse(
         success=True,
@@ -82,6 +89,8 @@ async def chat(request: ChatRequest):
             detail=f"State must be one of: {valid_states}"
         )
 
+    cleanup_expired_lease_namespaces()
+
     # Run RAG chain with the lease namespace keyed by this session_id.
     response = run_rag_chain(
         question=request.question.strip(),
@@ -98,6 +107,13 @@ async def chat(request: ChatRequest):
         conflict_flag=response.conflict_flag,
         error_type=response.error_type
     )
+
+async def _delete_lease_namespace_later(session_id: str):
+    await asyncio.sleep(settings.LEASE_VECTOR_TTL_MINUTES * 60)
+    try:
+        delete_lease_namespace(session_id)
+    except Exception:
+        pass
 
 def _error_message(error_type: str) -> str:
     """
