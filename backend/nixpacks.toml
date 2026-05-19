@@ -1,2 +1,8 @@
 [phases.setup]
-nixPkgs = ["tesseract"]
+aptPkgs = ["tesseract-ocr", "tesseract-ocr-eng", "poppler-utils", "libpoppler-dev"]
+
+[phases.build]
+cmds = ["pip install -r requirements.txt"]
+
+[variables]
+TESSDATA_PREFIX = "/usr/share/tesseract-ocr/5/tessdata"
