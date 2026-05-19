@@ -22,10 +22,6 @@ def get_embedding(text: str) -> list[float]:
     return result.tolist() if hasattr(result, "tolist") else list(result)
 
 
-def warm_embedding_model() -> None:
-    _get_embedding_model()
-
-
 def get_embeddings(texts: list[str]) -> list[list[float]]:
     results = _get_embedding_model().encode(
         texts,
