@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from api.routes import router
+from core.database import warm_embedding_model
 
 app = FastAPI(
     title="Sue Your Landlord",
@@ -20,6 +21,11 @@ app.add_middleware(
 
 # Register routes
 app.include_router(router, prefix="/api/v1")
+
+
+@app.on_event("startup")
+async def startup():
+    warm_embedding_model()
 
 @app.get("/health")
 async def health():

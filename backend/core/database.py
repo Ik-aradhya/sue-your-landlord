@@ -22,6 +22,24 @@ def get_embedding(text: str) -> list[float]:
     return result.tolist() if hasattr(result, "tolist") else list(result)
 
 
+def warm_embedding_model() -> None:
+    _get_embedding_model()
+
+
+def get_embeddings(texts: list[str]) -> list[list[float]]:
+    results = _get_embedding_model().encode(
+        texts,
+        batch_size=32,
+        show_progress_bar=False,
+    )
+    if hasattr(results, "tolist"):
+        return results.tolist()
+    return [
+        result.tolist() if hasattr(result, "tolist") else list(result)
+        for result in results
+    ]
+
+
 # ─── Pinecone ───────────────────────────────────────────────────
 _pinecone_client: Pinecone | None = None
 _law_index = None

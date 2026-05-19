@@ -13,9 +13,11 @@ from models.schemas import Chunk, DocType
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 import uuid
-from core.database import get_law_index, get_embedding
+from core.database import get_law_index, get_embeddings
 
 MAX_BYTES = settings.MAX_FILE_SIZE_MB * 1024 * 1024  # 10MB in bytes
+OCR_DPI = 200
+OCR_MAX_PAGES = 8
 
 tesseract_path = shutil.which("tesseract")
 if tesseract_path:
@@ -207,8 +209,14 @@ def extract_text_with_ocr(raw: bytes) -> str:
     Called when normal PyMuPDF extraction returns empty text.
     """
     try:
-        # Convert PDF pages to images
-        images = convert_from_bytes(raw, dpi=300)
+        # Keep OCR bounded so scanned PDFs do not exceed Railway's request timeout.
+        images = convert_from_bytes(
+            raw,
+            dpi=OCR_DPI,
+            first_page=1,
+            last_page=OCR_MAX_PAGES,
+            thread_count=1,
+        )
         
         full_text = ""
         for page_num, image in enumerate(images):
@@ -499,7 +507,7 @@ async def run_ingestion_pipeline(
     # STEP 4 — STORE EMBEDDINGS
     try:
         documents = [chunk.text for chunk in chunks]
-        embeddings = [get_embedding(doc) for doc in documents]
+        embeddings = get_embeddings(documents)
         ids = [chunk.chunk_id for chunk in chunks]
 
         # Store full metadata — session_id is critical for lease retrieval
