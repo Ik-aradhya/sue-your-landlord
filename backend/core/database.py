@@ -56,11 +56,27 @@ def _get_hf_embeddings(texts: list[str]) -> list[list[float]]:
 
 
 def _call_hf_feature_extraction(texts: list[str]) -> list[list[float]]:
-    url = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{settings.EMBEDDING_MODEL}"
     payload = json.dumps({
         "inputs": texts,
         "options": {"wait_for_model": True},
     }).encode("utf-8")
+
+    errors: list[str] = []
+    urls = [
+        f"https://router.huggingface.co/hf-inference/models/{settings.EMBEDDING_MODEL}/pipeline/feature-extraction",
+        f"https://api-inference.huggingface.co/models/{settings.EMBEDDING_MODEL}",
+    ]
+    for url in urls:
+        try:
+            result = _post_hf_embedding_request(url, payload)
+            return _normalize_hf_embedding_response(result, expected_count=len(texts))
+        except RuntimeError as e:
+            errors.append(str(e))
+
+    raise RuntimeError("Hugging Face embedding request failed: " + " | ".join(errors))
+
+
+def _post_hf_embedding_request(url: str, payload: bytes):
     request = Request(
         url,
         data=payload,
@@ -73,14 +89,12 @@ def _call_hf_feature_extraction(texts: list[str]) -> list[list[float]]:
 
     try:
         with urlopen(request, timeout=HF_EMBEDDING_TIMEOUT_SECONDS) as response:
-            result = json.loads(response.read().decode("utf-8"))
+            return json.loads(response.read().decode("utf-8"))
     except HTTPError as e:
         detail = e.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Hugging Face embedding request failed: {e.code} {detail}") from e
+        raise RuntimeError(f"{url} returned {e.code}: {detail}") from e
     except URLError as e:
-        raise RuntimeError(f"Hugging Face embedding request failed: {e.reason}") from e
-
-    return _normalize_hf_embedding_response(result, expected_count=len(texts))
+        raise RuntimeError(f"{url} failed: {e.reason}") from e
 
 
 def _normalize_hf_embedding_response(result, expected_count: int) -> list[list[float]]:
