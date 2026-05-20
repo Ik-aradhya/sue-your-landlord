@@ -46,8 +46,8 @@ def format_response(
     """
     Parses raw LLM output into structured RAGResponse.
 
-    Confidence comes from your retrieval system — NOT from the LLM.
-    The LLM does not get to decide how confident it is.
+    Confidence is parsed from the model response, then constrained by
+    parser-level quality checks.
     """
 
     def extract_field(label: str, text: str) -> str:
@@ -110,20 +110,29 @@ def format_response(
         "ambiguous",
         "possibly",
         "perhaps",
+        "only if",
+        "it depends on your situation",
+        "you may have rights",
+        "consider seeking legal advice",
+        "the context does not provide enough information",
+        "consult a legal professional",
+        "review the act",
+        "seek legal advice",
+        "the next step would be to review",
     ]
 
-    answer_lower = answer.lower()
-    hedged = any(phrase in answer_lower for phrase in HEDGE_PHRASES)
+    combined_lower = f"{answer} {explanation}".lower()
+    hedged = any(phrase in combined_lower for phrase in HEDGE_PHRASES)
 
     final_confidence = llm_confidence or confidence
 
     if final_confidence == Confidence.HIGH and not (legal_basis or lease_ref):
         final_confidence = Confidence.MEDIUM
 
-    if final_confidence == Confidence.HIGH and (hedged or conflict_flag):
+    if final_confidence == Confidence.HIGH and hedged:
         final_confidence = Confidence.MEDIUM
 
-    if final_confidence in (Confidence.HIGH, Confidence.MEDIUM) and hedged and conflict_flag:
+    if final_confidence in (Confidence.HIGH, Confidence.MEDIUM) and hedged and not legal_basis:
         final_confidence = Confidence.LOW
 
     return RAGResponse(
@@ -143,10 +152,10 @@ def fallback_response(reason: str = "") -> RAGResponse:
     or any pipeline stage fails.
     """
     return RAGResponse(
-        answer="I don't have enough information in the provided documents to answer this confidently.",
+        answer="No legal provision was retrieved for this question.",
         legal_basis="",
         lease_reference=None,
-        explanation="The retrieved context was insufficient to provide a reliable legal answer. Please consult a legal professional.",
+        explanation="Ask again with the specific issue named directly, such as repairs, rent increase, lockout, possession, notice, or receipts, so the app can retrieve the exact statute section or lease clause.",
         confidence=Confidence.LOW,
         conflict_flag=False,
         error_type=f"FALLBACK: {reason}" if reason else "FALLBACK"

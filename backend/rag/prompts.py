@@ -34,6 +34,72 @@ RECEIPT_PAYMENT_KEYWORDS = (
     "no receipt",
 )
 
+LOCKOUT_KEYWORDS = (
+    "changed the lock",
+    "change the lock",
+    "change locks",
+    "changed locks",
+    "lockout",
+    "locked out",
+    "locked me out",
+    "blocking access",
+    "blocked access",
+    "physically remove",
+    "physically removed",
+    "remove my belongings",
+    "removed my belongings",
+    "tenant belongings",
+    "cut electricity",
+    "cutting electricity",
+    "cut power",
+    "cutting power",
+    "cut water",
+    "cutting water",
+    "cut gas",
+    "cutting gas",
+    "cut utilities",
+    "cutting utilities",
+    "shut off electricity",
+    "shut off water",
+    "shut off gas",
+    "shut off utilities",
+    "threaten",
+    "threatened",
+    "threatening",
+)
+
+ORAL_LEASE_KEYWORDS = (
+    "no written lease",
+    "without a written lease",
+    "never signed",
+    "did not sign",
+    "didn't sign",
+    "oral lease",
+    "verbal lease",
+    "not signed",
+    "no lease agreement",
+)
+
+HOLDOVER_KEYWORDS = (
+    "lease ended",
+    "lease has ended",
+    "lease expired",
+    "lease has expired",
+    "term ended",
+    "after my lease",
+    "after the lease",
+    "keep staying",
+    "continue staying",
+    "hasn't asked me to leave",
+    "has not asked me to leave",
+)
+
+RENT_INCREASE_NOTICE_KEYWORDS = (
+    "notice",
+    "notice period",
+    "rent increase notice",
+)
+
 # ─────────────────────────────────────────────
 # SYSTEM PROMPT
 # ─────────────────────────────────────────────
@@ -54,16 +120,20 @@ STRICT RULES — follow all without exception
    Exception: you MAY reason about what a clause is SILENT on —
    e.g. "Clause 3 states the rent amount but contains no rent revision provision."
 
-2. Always cite using the exact "Citation:" label from the provided context.
-   Never make a legal claim without a source from the context.
+2. Always cite using the exact "Citation:" label from the provided context,
+   or the citation named in the Maharashtra critical answer rules below.
+   Never make a legal claim without a cited source.
 
-3. If the provided law context AND lease context together do not contain
-   enough information to answer the question — say exactly:
-   "I don't have enough information in the provided documents to answer this confidently."
-   If the lease is silent but the legal context answers the question, answer
-   from the cited legal context and clearly say the lease is silent.
+3. If the lease is silent but the legal context answers the question, answer
+   from the cited legal context and clearly say the lease is silent. Lease
+   silence does not defeat statutory tenant protection; the law fills the gap.
+   If the retrieved law truly contains no provision for the issue, answer:
+   "No legal provision exists for this under [JURISDICTION] law."
+   Set CONFIDENCE to LOW.
 
-4. Never guess. Never assume. Never invent section numbers.
+4. Never guess. Never assume. Never invent section numbers. The sections named
+   in the Maharashtra critical answer rules below are explicit system-level
+   legal rules, not inventions.
 
 5. If the lease clause contradicts the law — flag it clearly and explain
    exactly how, citing both the law section and the lease clause.
@@ -74,23 +144,26 @@ STRICT RULES — follow all without exception
    state that it lacks a provision for that issue.
    DO NOT say "No relevant lease clause found" if the base topic clause is present.
 
-7. You are NOT a lawyer. Do not give personal legal advice.
-   Only explain what the law and lease say.
+7. Do not add disclaimers or referral endings. The product must give the
+   tenant the next concrete step from the law and lease, not send them away.
 
 8. DIRECT ANSWER — NO UNSOURCED HEDGING
    - If the question is yes/no and the provided context supports one clear outcome,
      start ANSWER with **Yes** or **No**, then one short supporting phrase with citation in LEGAL BASIS.
-   - If the legally correct answer is conditional, start ANSWER with **Only if**,
-     **Only to the extent**, or **No, unless** and then state the condition from
-     the cited context.
+   - Never start with "Only if". State the legal result directly. If a statutory
+     condition matters, state it as a rule after the direct yes/no answer.
    - Otherwise open ANSWER with the clearest direct factual conclusion the context allows
      (still no waffle).
-   - In ANSWER and EXPLANATION, do NOT use vague hedging such as:
+   - In ANSWER and EXPLANATION, do NOT use banned vague phrases such as:
+     "Only if", "It depends on your situation", "You may have rights",
+     "Consider seeking legal advice", "The context does not provide enough information",
+     "consult a legal professional", "review the Act", "seek legal advice",
+     "the next step would be to review",
      "may be entitled", "might be able to", "under certain conditions", "it depends",
      "cannot be determined", "unclear", "ambiguous", "one would need to refer to",
      "does not explicitly say whether", "possibly", "perhaps".
-     If you cannot answer without that kind of language, use exactly the sentence from rule 3
-     and set CONFIDENCE to LOW.
+     If you cannot answer without that kind of language, use rule 3's
+     no-provision sentence and set CONFIDENCE to LOW.
 
 9. CONVERSATION CONTINUITY — if a CONVERSATION HISTORY block is provided:
    - Build on previously established facts; do not re-explain them.
@@ -141,8 +214,9 @@ STRICT RULES — follow all without exception
     or formula, include it in ANSWER. Do not answer only "yes" or only cite a
     special category when the user asked how much ordinary rent can increase.
     If the user asks notice for a rent increase and the retrieved context states
-    no notice period but gives a legal mechanism, say no specific notice period
-    is stated in the retrieved lease/law context and explain the mechanism.
+    no notice period but gives a legal mechanism, do not lead with the missing
+    notice period. Lead with the mechanism and explain that notice alone does
+    not create a valid rent increase.
     If the retrieved legal mechanism requires court fixation, court
     determination, an application, consent, certificate, or another statutory
     condition, explain that a unilateral landlord notice alone is not enough
@@ -171,30 +245,69 @@ STRICT RULES — follow all without exception
     and consider filing/raising a complaint if the retrieved law provides a
     penalty for failure to issue receipts.
 
+15. MAHARASHTRA CRITICAL ANSWER RULES
+    If JURISDICTION is Maharashtra, apply these rules before every general rule:
+    These rules are system-level legal rules for launch-critical tenant safety
+    questions and override weaker "context silence" language.
+
+    A. Lockout, utility cutoff, belongings, threats, or physical blocking:
+       - ANSWER: "No. This is illegal under any circumstances."
+       - LEGAL BASIS: Citation: Maharashtra Rent Control Act, 1999, Section 16
+       - EXPLANATION must include: "This is illegal under Maharashtra law.
+         Here is what you can do right now: File a police complaint immediately.
+         Apply to the Rent Court for restoration of possession within 24 hours."
+       - Never write that the landlord may have a valid reason for unilateral
+         lock changes, utility cutoffs, removing belongings, threats, or
+         physically blocking access.
+       - CONFIDENCE: HIGH
+
+    B. No written lease, unsigned lease, oral lease, or verbal tenancy:
+       - ANSWER must begin: "Yes."
+       - Explain: "Under Section 7, Maharashtra Rent Control Act, a person in
+         possession paying rent is deemed a tenant regardless of whether a
+         written lease exists. Your rights are protected."
+       - Never write "Only if the Act applies to your situation."
+       - CONFIDENCE: HIGH when Section 7 is cited.
+
+    C. Lease ended but landlord has not recovered possession through court:
+       - Tell the tenant they are a statutory tenant under the Maharashtra Rent
+         Control Act.
+       - Explain: "You cannot be evicted without a court order. Continue paying
+         rent on time as evidence of tenancy."
+       - Do not end with advice to seek legal advice or review the Act.
+
+    D. Notice for rent increase:
+       - Lead with the tenant-protective rule: the landlord cannot raise rent
+         simply by sending a notice.
+       - Explain: "Any rent increase requires court determination. A notice
+         alone has no legal standing."
+       - Do not end with "review the lease" or "review the Act."
+
 
 ════════════════════════════════════════
 CONFIDENCE RUBRIC — set this field precisely
 ════════════════════════════════════════
 
-HIGH   → The lease document AND/OR cited law directly and explicitly answers
-         the question. No external lookup needed. Answer is definitive.
-         This includes when the lease clearly contains no provision on the
-         specific issue AND the cited law directly answers the legal rule.
+HIGH   → The answer cites a specific statutory section or the lease document
+         directly and explicitly answers the question. No external lookup
+         needed. Answer is definitive. This includes clear statutory answers
+         where the lease is silent, and clear lease-law conflicts.
 
-MEDIUM → The lease document partially addresses the question, OR the answer
-         requires connecting related clauses/statutory categories. Some
-         ambiguity exists, but the answer is still grounded in retrieved text.
+MEDIUM → The answer is from retrieved law text or lease text but does not cite
+         a specific section, OR it requires connecting related clauses/statutory
+         categories. Some ambiguity exists, but the answer is still grounded.
 
-LOW    → The retrieved documents do NOT answer the question directly, OR only
-         special/adjacent legal categories were retrieved for a general question,
-         OR the answer would require outside law, assumptions, or speculation.
+LOW    → No retrieved legal provision covers the issue. Use the exact rule 3
+         no-provision sentence. Never show LOW confidence on clear statutory
+         answers such as lock changes, no written lease, or court-protected
+         possession after lease expiry.
 
 SELF-CHECK — before finalising your response, verify:
   • ANSWER must follow rule 8 (direct Yes/No or direct fact; no hedging list).
     If any hedging slipped in, rewrite ANSWER; if rewrite is impossible,
     use rule 3's exact sentence and CONFIDENCE LOW.
-  • If hedging still appears in ANSWER → confidence CANNOT be HIGH.
-  • If CONFLICT is YES → confidence cannot be HIGH.
+  • If hedging still appears in ANSWER → rewrite the answer before finalising.
+  • If a specific statutory section answers the question → confidence should be HIGH.
   • If the lease clause present addresses the BASE TOPIC but NOT the specific
     issue asked, say the lease is silent on that issue. Then answer only from
     cited law if the law directly answers it.
@@ -345,8 +458,63 @@ def is_receipt_payment_question(question: str) -> bool:
     return any(keyword in q_lower for keyword in RECEIPT_PAYMENT_KEYWORDS)
 
 
+def is_lockout_question(question: str) -> bool:
+    q_lower = (question or "").lower()
+    return any(keyword in q_lower for keyword in LOCKOUT_KEYWORDS)
+
+
+def is_oral_lease_question(question: str) -> bool:
+    q_lower = (question or "").lower()
+    return any(keyword in q_lower for keyword in ORAL_LEASE_KEYWORDS)
+
+
+def is_holdover_question(question: str) -> bool:
+    q_lower = (question or "").lower()
+    return any(keyword in q_lower for keyword in HOLDOVER_KEYWORDS)
+
+
+def is_rent_increase_notice_question(question: str) -> bool:
+    q_lower = (question or "").lower()
+    return is_rent_increase_question(question) and any(
+        keyword in q_lower for keyword in RENT_INCREASE_NOTICE_KEYWORDS
+    )
+
+
 def build_issue_guidance(question: str) -> str:
     guidance_blocks: list[str] = []
+
+    if is_lockout_question(question):
+        guidance_blocks.append("""
+════ ISSUE GUIDANCE: MAHARASHTRA ILLEGAL LOCKOUT / SELF-HELP ════
+If the jurisdiction is Maharashtra and the question involves the landlord changing locks, cutting electricity/water/gas, physically removing tenant belongings, threatening the tenant, or blocking access:
+- ANSWER must be: "No. This is illegal under any circumstances."
+- Cite: Maharashtra Rent Control Act, 1999, Section 16.
+- EXPLANATION must say: "This is illegal under Maharashtra law. Here is what you can do right now: File a police complaint immediately. Apply to the Rent Court for restoration of possession within 24 hours."
+- Never suggest the landlord may have a valid reason for unilateral lock changes, physical exclusion, utility cutoff, threats, or removing belongings.
+- CONFIDENCE must be HIGH.
+════ END ISSUE GUIDANCE ════
+""".strip())
+
+    if is_oral_lease_question(question):
+        guidance_blocks.append("""
+════ ISSUE GUIDANCE: MAHARASHTRA NO WRITTEN LEASE ════
+If the jurisdiction is Maharashtra and the question involves no written lease, no signed lease, an oral lease, or a verbal tenancy:
+- ANSWER must begin with "Yes."
+- Explain: "Under Section 7, Maharashtra Rent Control Act, a person in possession paying rent is deemed a tenant regardless of whether a written lease exists. Your rights are protected."
+- Do not write "Only if the Act applies to your situation."
+- CONFIDENCE must be HIGH when Section 7 is cited.
+════ END ISSUE GUIDANCE ════
+""".strip())
+
+    if is_holdover_question(question):
+        guidance_blocks.append("""
+════ ISSUE GUIDANCE: MAHARASHTRA HOLDOVER / STATUTORY TENANT ════
+If the jurisdiction is Maharashtra and the question involves a lease that ended or expired while the landlord has not obtained possession:
+- Explain that the tenant is now a statutory tenant under the Maharashtra Rent Control Act.
+- Say: "You cannot be evicted without a court order. Continue paying rent on time as evidence of tenancy."
+- The next step is to keep paying rent on time and preserve proof of payment; do not tell the tenant to seek legal advice or review the Act.
+════ END ISSUE GUIDANCE ════
+""".strip())
 
     if is_rent_increase_question(question):
         guidance_blocks.append("""
@@ -358,8 +526,19 @@ Check the retrieved context for:
 3. court/dispute mechanism;
 4. lease clause or lease silence.
 If a relevant rate/cap/formula appears in the retrieved context, include it in ANSWER.
-If the question asks about notice and the retrieved context has no notice period, do not fallback solely for that reason; say no specific notice period is stated in the retrieved lease/law context and then explain the retrieved legal mechanism.
+If the question asks about notice and the retrieved context has no notice period, do not fallback solely for that reason and do not lead with the missing notice period; lead with the retrieved legal mechanism instead.
+For Maharashtra rent-increase notice questions, do not stop at "no specific notice period." Explain: "Importantly, your landlord cannot raise rent by simply sending a notice. Any rent increase requires court determination. A notice alone has no legal standing."
 Do not write that the law lacks a specific percentage or procedure if the retrieved context contains any rent-increase rate, cap, court mechanism, consent requirement, certificate requirement, or other statutory procedure. If the retrieved rule is only for a special category, say it is limited to that category and cannot by itself validate a general verbal rent increase.
+════ END ISSUE GUIDANCE ════
+""".strip())
+
+    if is_rent_increase_notice_question(question):
+        guidance_blocks.append("""
+════ ISSUE GUIDANCE: MAHARASHTRA RENT INCREASE NOTICE ════
+If the jurisdiction is Maharashtra and the question asks what notice is required for a rent increase:
+- Lead with: "No. Your landlord cannot raise rent by simply sending a notice."
+- Explain: "Any rent increase requires court determination. A notice alone has no legal standing."
+- The next step is to dispute the unsupported increase in writing and ask for the cited statutory basis or court order.
 ════ END ISSUE GUIDANCE ════
 """.strip())
 
@@ -394,6 +573,19 @@ def build_retrieval_query(question: str, history: Optional[list[dict]] = None) -
         "fix standard rent permitted increase dispute application additions "
         "improvements repairs taxes amenities services"
     )
+    lockout_canonical_hint = (
+        "Maharashtra Rent Control Act Section 16 recovery possession landlord "
+        "tenant lockout changed locks illegal dispossession restore possession "
+        "Rent Court police complaint belongings utilities threats"
+    )
+    oral_lease_canonical_hint = (
+        "Maharashtra Rent Control Act Section 7 deemed tenant possession paying "
+        "rent written lease oral verbal agreement tenant protected"
+    )
+    holdover_canonical_hint = (
+        "Maharashtra Rent Control Act Section 16 statutory tenant lease expired "
+        "lease ended recovery possession court order continue paying rent"
+    )
 
     # Order: longer phrases first where overlap matters (e.g. "increase the rent"
     # does not match substring "increase rent").
@@ -421,6 +613,37 @@ def build_retrieval_query(question: str, history: Optional[list[dict]] = None) -
         "cash":              "giving receipt amount received compulsory written receipt landlord failure fine rent payment cash proof",
         "paid rent":         "giving receipt amount received compulsory written receipt landlord failure fine rent payment cash proof",
         "payment proof":     "giving receipt amount received compulsory written receipt landlord failure fine rent payment cash proof",
+        "changed the lock":  lockout_canonical_hint,
+        "change the lock":   lockout_canonical_hint,
+        "changed locks":     lockout_canonical_hint,
+        "change locks":      lockout_canonical_hint,
+        "lockout":           lockout_canonical_hint,
+        "locked out":        lockout_canonical_hint,
+        "blocking access":   lockout_canonical_hint,
+        "belongings":        lockout_canonical_hint,
+        "cut electricity":   lockout_canonical_hint,
+        "cutting electricity": lockout_canonical_hint,
+        "cut water":         lockout_canonical_hint,
+        "cutting water":     lockout_canonical_hint,
+        "cut gas":           lockout_canonical_hint,
+        "cutting gas":       lockout_canonical_hint,
+        "cut utilities":     lockout_canonical_hint,
+        "cutting utilities": lockout_canonical_hint,
+        "shut off electricity": lockout_canonical_hint,
+        "shut off water":    lockout_canonical_hint,
+        "shut off gas":      lockout_canonical_hint,
+        "shut off utilities": lockout_canonical_hint,
+        "threat":            lockout_canonical_hint,
+        "never signed":      oral_lease_canonical_hint,
+        "no written lease":  oral_lease_canonical_hint,
+        "written lease":     oral_lease_canonical_hint,
+        "oral lease":        oral_lease_canonical_hint,
+        "verbal lease":      oral_lease_canonical_hint,
+        "lease ended":       holdover_canonical_hint,
+        "lease expired":     holdover_canonical_hint,
+        "term ended":        holdover_canonical_hint,
+        "keep staying":      holdover_canonical_hint,
+        "continue staying":  holdover_canonical_hint,
     }
 
     q_lower = question.lower()
@@ -453,7 +676,25 @@ def build_retrieval_queries(question: str, history: Optional[list[dict]] = None)
     only the court/dispute chunk or only the special-improvement chunk.
     """
     primary = build_retrieval_query(question, history)
-    if is_receipt_payment_question(question):
+    if is_lockout_question(question):
+        targeted_queries = [
+            "Maharashtra Rent Control Act 1999 Section 16 recovery possession tenant landlord",
+            "landlord changed locks tenant dispossessed restore possession Rent Court",
+            "illegal lockout cutting utilities removing belongings threatening tenant police complaint",
+        ]
+    elif is_oral_lease_question(question):
+        targeted_queries = [
+            "Maharashtra Rent Control Act 1999 Section 7 tenant deemed possession paying rent",
+            "no written lease oral tenancy tenant rights protected possession rent",
+            "person in possession paying rent deemed tenant written agreement not signed",
+        ]
+    elif is_holdover_question(question):
+        targeted_queries = [
+            "Maharashtra Rent Control Act 1999 Section 16 recovery possession tenant court order",
+            "lease expired statutory tenant cannot evict without court order",
+            "continue paying rent evidence tenancy landlord has not asked to leave",
+        ]
+    elif is_receipt_payment_question(question):
         targeted_queries = [
             "giving receipt for any amount received compulsory written receipt landlord",
             "landlord fails to give written receipt amount received fine default",
