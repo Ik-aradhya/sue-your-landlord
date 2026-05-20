@@ -25,6 +25,7 @@ def test_low_confidence_fallback_remains_legal_insufficiency():
     assert response.confidence == Confidence.LOW
     assert response.error_type == "FALLBACK: low retrieval confidence"
     assert "No legal provision was retrieved" in response.answer
+    assert "Missing:" in response.explanation
 
 
 def test_conflict_answer_with_specific_section_can_remain_high_confidence():

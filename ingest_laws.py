@@ -1,10 +1,22 @@
 import asyncio
 import os
 import io
+import sys
 from fastapi import UploadFile
+
+sys.path.append(".")
+sys.path.append("backend")
+
 from backend.rag.ingest import run_ingestion_pipeline
 from backend.models.schemas import DocType
+from backend.core.database import get_law_index
 from starlette.datastructures import Headers
+
+
+def clear_existing_law_vectors(state: str) -> None:
+    """Remove stale law vectors so corrected citations replace old metadata."""
+    index = get_law_index()
+    index.delete(filter={"state": {"$eq": state}})
 
 async def main():
     laws_dir = "data/laws"
@@ -32,8 +44,9 @@ async def main():
         if state == "unknown":
             print(f"⚠️  Skipping {filename} — state not recognised")
             continue
-            
+	            
         print(f"⏳ Ingesting {filename} → state: {state}")
+        clear_existing_law_vectors(state)
         
         with open(filepath, "rb") as f:
             content = f.read()

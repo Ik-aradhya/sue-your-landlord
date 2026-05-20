@@ -51,7 +51,8 @@ def test_rent_increase_prompt_gets_issue_guidance():
     guidance = build_issue_guidance("What notice is required for a rent increase?")
 
     assert "RENT INCREASE CLUSTER" in guidance
-    assert "notice alone has no legal standing" in guidance
+    assert "answer the notice requirement first" in guidance
+    assert "Do not start with \"No\"" in guidance
 
     messages = build_prompt(
         question="What notice is required for a rent increase?",
@@ -67,54 +68,59 @@ def test_rent_increase_prompt_gets_issue_guidance():
 def test_system_prompt_contains_product_answer_rules():
     assert 'Never start with "Only if"' in SYSTEM_PROMPT
     assert "No legal provision exists for this under [JURISDICTION] law." in SYSTEM_PROMPT
-    assert "MAHARASHTRA CRITICAL ANSWER RULES" in SYSTEM_PROMPT
+    assert "ANSWER WRITING QUALITY" in SYSTEM_PROMPT
+    assert "not a search result summary" in SYSTEM_PROMPT
+    assert "Yes/No/Partially/Likely first" in SYSTEM_PROMPT
+    assert "LOW confidence must be useful" in SYSTEM_PROMPT
+    assert "Do not force a Yes/No opening" in SYSTEM_PROMPT
     assert "specific statutory section" in SYSTEM_PROMPT
 
 
-def test_lockout_prompt_gets_illegal_self_help_guidance():
+def test_lockout_prompt_gets_state_neutral_self_help_guidance():
     question = "My landlord changed the lock while I was at work — what can I do?"
     guidance = build_issue_guidance(question)
 
-    assert "MAHARASHTRA ILLEGAL LOCKOUT" in guidance
-    assert "No. This is illegal under any circumstances." in guidance
-    assert "Maharashtra Rent Control Act, 1999, Section 16" in guidance
-    assert "File a police complaint immediately" in guidance
-    assert "CONFIDENCE must be HIGH" in guidance
+    assert "LOCKOUT / SELF-HELP EVICTION" in guidance
+    assert "selected state" in guidance
+    assert "cite that section" in guidance
+    assert "Never imply a unilateral lock change" in guidance
 
     queries = build_retrieval_queries(question)
 
     assert len(queries) == 4
-    assert any("Section 16" in query for query in queries)
+    assert not any("Maharashtra" in query for query in queries)
     assert any("restore possession" in query for query in queries)
 
 
-def test_no_written_lease_prompt_gets_section_7_guidance():
+def test_no_written_lease_prompt_gets_state_neutral_guidance():
     question = "I never signed a written lease — do I have any rights?"
     guidance = build_issue_guidance(question)
 
-    assert "MAHARASHTRA NO WRITTEN LEASE" in guidance
-    assert "Under Section 7" in guidance
-    assert "Your rights are protected" in guidance
+    assert "NO WRITTEN LEASE / ORAL TENANCY" in guidance
+    assert "selected state" in guidance
+    assert "deemed tenant" in guidance
+    assert "based on statute" in guidance
 
     queries = build_retrieval_queries(question)
 
     assert len(queries) == 4
-    assert any("Section 7" in query for query in queries)
+    assert not any("Maharashtra" in query for query in queries)
     assert any("deemed tenant" in query for query in queries)
 
 
-def test_holdover_prompt_gets_statutory_tenant_guidance():
+def test_holdover_prompt_gets_state_neutral_possession_guidance():
     question = "My lease ended but landlord hasn't asked me to leave — can I keep staying?"
     guidance = build_issue_guidance(question)
 
-    assert "MAHARASHTRA HOLDOVER" in guidance
-    assert "statutory tenant" in guidance
-    assert "cannot be evicted without a court order" in guidance
-    assert "Continue paying rent on time" in guidance
+    assert "LEASE ENDED / HOLDOVER POSSESSION" in guidance
+    assert "selected state" in guidance
+    assert "court proceedings" in guidance
+    assert "Do not invent \"statutory tenant\" language" in guidance
 
     queries = build_retrieval_queries(question)
 
     assert len(queries) == 4
+    assert not any("Maharashtra" in query for query in queries)
     assert any("court order" in query for query in queries)
     assert any("statutory tenant" in query for query in queries)
 

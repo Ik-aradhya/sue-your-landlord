@@ -110,6 +110,13 @@ def format_response(
         "ambiguous",
         "possibly",
         "perhaps",
+        "could be",
+        "could have",
+        "may have",
+        "may be able",
+        "would depend",
+        "depends on",
+        "not enough information",
         "only if",
         "it depends on your situation",
         "you may have rights",
@@ -152,10 +159,10 @@ def fallback_response(reason: str = "") -> RAGResponse:
     or any pipeline stage fails.
     """
     return RAGResponse(
-        answer="No legal provision was retrieved for this question.",
+        answer="No legal provision was retrieved that answers this question.",
         legal_basis="",
         lease_reference=None,
-        explanation="Ask again with the specific issue named directly, such as repairs, rent increase, lockout, possession, notice, or receipts, so the app can retrieve the exact statute section or lease clause.",
+        explanation="Missing: a matching statute section or lease clause for the specific issue. Ask again with the issue and state named clearly, such as repairs, rent increase, lockout, possession, notice, or receipts.",
         confidence=Confidence.LOW,
         conflict_flag=False,
         error_type=f"FALLBACK: {reason}" if reason else "FALLBACK"

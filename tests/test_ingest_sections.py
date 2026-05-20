@@ -38,3 +38,20 @@ section 14.
 
     assert result["error_type"] is None
     assert result["chunks"][-1].section == "Maharashtra Rent Control Act, 1999, Section 11"
+
+
+def test_law_chunk_ids_are_stable_for_reingestion():
+    text = """
+29. Landlord not to cut-off or withhold essential supply or service.- No landlord shall,
+without just or sufficient cause, cut-off water or electricity.
+"""
+
+    first = chunk_text(text, DocType.LAW, state="maharashtra")
+    second = chunk_text(text, DocType.LAW, state="maharashtra")
+
+    assert first["error_type"] is None
+    assert second["error_type"] is None
+    assert [chunk.chunk_id for chunk in first["chunks"]] == [
+        chunk.chunk_id for chunk in second["chunks"]
+    ]
+    assert first["chunks"][0].section == "Maharashtra Rent Control Act, 1999, Section 29"

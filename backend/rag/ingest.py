@@ -1,4 +1,5 @@
 import re
+import hashlib
 from typing import Optional
 
 import fitz                        # PyMuPDF
@@ -426,8 +427,16 @@ def chunk_text(
         else:
             section = extract_section_from_chunk(chunk_text_content, doc_type, state)
 
+        if doc_type == DocType.LAW:
+            digest = hashlib.sha1(
+                f"{state or ''}:{start}:{end}:{chunk_text_content[:120]}".encode("utf-8")
+            ).hexdigest()[:16]
+            chunk_id = f"law:{state or 'unknown'}:{start}:{end}:{digest}"
+        else:
+            chunk_id = str(uuid.uuid4())
+
         chunk = Chunk(
-            chunk_id=str(uuid.uuid4()),
+            chunk_id=chunk_id,
             text=chunk_text_content,
             source=doc_type,
             section=section,        # ✅ unique and meaningful per chunk
