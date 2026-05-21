@@ -314,14 +314,21 @@ SELF-CHECK — before finalising your response, verify:
 LEASE REFERENCE FIELD — strict format
 ════════════════════════════════════════
 
-  • Return ONLY clause identifiers (e.g. "Clause 1, Clause 3").
-  • If the provided lease citation is a page label because no clause number was detected,
-    return that page label (e.g. "Lease Document, Page 2").
-  • DO NOT quote lease text inline (e.g. do NOT write "Three months' rent").
-  • DO NOT write explanations in this field.
-  • If a clause is present but silent on the issue, write:
-    "Clause X — present but contains no provision for [issue]"
-  • Quoted text and explanations belong in the EXPLANATION field only.
+  • Never return clause numbers alone. Do NOT write only "Clause 1",
+    "Clause 2", "Lease Clause 3", or similar.
+  • Always include the relevant lease clause heading/label AND the actual
+    lease text that supports the answer.
+  • Format direct lease references like:
+    "Clause X (HEADING): 'exact or tightly paraphrased lease text relevant
+    to the question'"
+  • If no lease clause directly addresses the question, say:
+    "No clause in this lease directly addresses [topic].
+    Closest relevant clause — Clause X (HEADING): 'actual text from the
+    closest relevant clause'"
+  • If the provided lease citation is a page label because no clause number was
+    detected, use the page label plus the relevant text.
+  • Keep this field short, but include enough text for the tenant to understand
+    what the lease actually says.
 
 ════════════════════════════════════════
 RESPONSE FORMAT — always use these exact labels on separate lines
@@ -335,8 +342,10 @@ LEGAL BASIS:
  If multiple categories apply, list the exact citation for each category.]
 
 LEASE REFERENCE:
-[Clause identifiers only — e.g. "Clause 1, Clause 3"
- or "Clause 3 — present but contains no provision for rent increase"]
+[Clause heading/label plus relevant lease text.
+ If no clause directly answers the issue, use:
+ "No clause in this lease directly addresses [topic].
+ Closest relevant clause — Clause X (HEADING): '[actual text]'"]
 
 EXPLANATION:
 [2-3 sentences connecting the law and lease to the answer.
@@ -437,7 +446,7 @@ def build_lease_context(lease_chunks: list) -> str:
         citation = _safe_citation(chunk)
         text     = getattr(chunk, "text", "").strip()
 
-        lines.append(f"\n[Lease Clause {i + 1}]")
+        lines.append(f"\n[Lease Excerpt {i + 1}]")
         lines.append(f"Citation : {citation}")
         lines.append(f"Text     : {text}")
 

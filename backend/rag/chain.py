@@ -34,14 +34,28 @@ def call_llm(messages: list[dict]) -> dict:
         }
     except Exception as e:
         error_msg = str(e)
-        if "rate_limit" in error_msg.lower():
-            return {"llm_output": None, "error_type": "RATE_LIMIT"}
+        error_lower = error_msg.lower()
+        credit_markers = [
+            "rate_limit",
+            "rate limit",
+            "429",
+            "too many requests",
+            "quota",
+            "credit",
+            "billing",
+            "insufficient",
+            "resource exhausted",
+        ]
+        if any(marker in error_lower for marker in credit_markers):
+            return {"llm_output": None, "error_type": "LLM_CREDITS_UNAVAILABLE"}
         return {"llm_output": None, "error_type": f"LLM_ERROR: {error_msg}"}
 
 
 def format_response(
     llm_output: str,
-    confidence: Confidence
+    confidence: Confidence,
+    lease_chunks: Optional[list] = None,
+    question: str = "",
 ) -> RAGResponse:
     """
     Parses raw LLM output into structured RAGResponse.
@@ -82,6 +96,12 @@ def format_response(
     explanation  = extract_field("EXPLANATION", llm_output)
     conflict_raw = extract_field("CONFLICT", llm_output)
     llm_confidence = parse_confidence(extract_field("CONFIDENCE", llm_output))
+    lease_ref = format_lease_reference(
+        raw_lease_reference=lease_ref,
+        lease_chunks=lease_chunks or [],
+        question=question,
+        supporting_notes=explanation,
+    )
 
     # If parsing failed — return safe fallback
     if not answer:
@@ -153,6 +173,175 @@ def format_response(
     )
 
 
+def _clean_lease_text(text: str) -> str:
+    cleaned = re.sub(r"\[Page\s+\d+\]", " ", text or "", flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned.strip(" \"'")
+
+
+def _issue_topic(question: str) -> str:
+    q = (question or "").lower()
+    topic_map = [
+        (("security deposit", "deposit"), "security deposit"),
+        (("rent increase", "increase rent", "rent hike", "escalation", "revision"), "rent increase"),
+        (("notice", "vacate", "termination"), "notice or termination"),
+        (("receipt", "cash", "payment proof", "paid rent"), "rent payment receipts"),
+        (("repair", "maintenance"), "repairs or maintenance"),
+        (("lock", "evict", "possession", "leave"), "possession or eviction"),
+    ]
+    for keywords, topic in topic_map:
+        if any(keyword in q for keyword in keywords):
+            return topic
+    compact = re.sub(r"[^a-z0-9\s]", " ", q)
+    words = [
+        word for word in compact.split()
+        if len(word) > 3 and word not in {
+            "what", "when", "where", "which", "landlord", "tenant",
+            "lease", "does", "have", "with", "from", "this", "that",
+            "your", "mine", "protected", "allowed", "required",
+        }
+    ]
+    return " ".join(words[:3]) or "this issue"
+
+
+def _question_terms(question: str) -> set[str]:
+    topic = _issue_topic(question)
+    text = f"{question or ''} {topic}".lower()
+    terms = {
+        word for word in re.findall(r"[a-z0-9]+", text)
+        if len(word) > 3 and word not in {
+            "what", "when", "where", "which", "landlord", "tenant",
+            "lease", "does", "have", "with", "from", "this", "that",
+            "your", "mine", "protected", "allowed", "required",
+        }
+    }
+    if "deposit" in terms:
+        terms.update({"security", "refund", "refunded", "deduct", "deduction", "interest"})
+    if "rent" in terms or "increase" in terms:
+        terms.update({"rent", "increase", "revision", "escalation", "enhance", "enhancement"})
+    if "notice" in terms:
+        terms.update({"notice", "terminate", "termination", "vacate"})
+    return terms
+
+
+def _lease_heading(chunk, fallback_index: int) -> str:
+    section = (getattr(chunk, "section", "") or "").strip()
+    if section:
+        return section
+    return f"Lease Excerpt {fallback_index}"
+
+
+def _score_lease_chunk(chunk, terms: set[str]) -> int:
+    haystack = f"{getattr(chunk, 'section', '')} {getattr(chunk, 'text', '')}".lower()
+    return sum(haystack.count(term) for term in terms)
+
+
+def _select_lease_chunk(raw_reference: str, lease_chunks: list, question: str):
+    if not lease_chunks:
+        return None, 0
+
+    raw = raw_reference or ""
+    clause_match = re.search(r"\b(?:lease\s+)?(?:clause|article)\s+(\d+[a-z]?)\b", raw, re.IGNORECASE)
+    if clause_match:
+        clause_num = clause_match.group(1)
+        clause_pattern = re.compile(rf"\b(?:clause|article)\s+{re.escape(clause_num)}\b", re.IGNORECASE)
+        for i, chunk in enumerate(lease_chunks, start=1):
+            heading = _lease_heading(chunk, i)
+            text_start = _clean_lease_text(getattr(chunk, "text", ""))[:120]
+            if clause_pattern.search(f"{heading} {text_start}"):
+                return chunk, i
+        if clause_num.isdigit():
+            synthetic_index = int(clause_num)
+            if 1 <= synthetic_index <= len(lease_chunks):
+                return lease_chunks[synthetic_index - 1], synthetic_index
+
+    terms = _question_terms(question)
+    scored = [
+        (_score_lease_chunk(chunk, terms), i, chunk)
+        for i, chunk in enumerate(lease_chunks, start=1)
+    ]
+    scored.sort(key=lambda item: item[0], reverse=True)
+    _, index, chunk = scored[0]
+    return chunk, index
+
+
+def _lease_excerpt(text: str, question: str, max_chars: int = 320) -> str:
+    cleaned = _clean_lease_text(text)
+    if not cleaned:
+        return ""
+
+    terms = _question_terms(question)
+    candidates = [
+        candidate.strip()
+        for candidate in re.split(r"(?<!Rs\.)(?<=[.!?])\s+|\s{2,}", cleaned)
+        if len(candidate.strip()) >= 20
+    ] or [cleaned]
+
+    def score(candidate: str) -> int:
+        lower = candidate.lower()
+        return sum(lower.count(term) for term in terms)
+
+    best = max(candidates, key=score)
+    if score(best) == 0:
+        best = cleaned
+
+    if len(best) <= max_chars:
+        return best
+    truncated = best[:max_chars].rsplit(" ", 1)[0].rstrip(" ,;:")
+    return f"{truncated}..."
+
+
+def _lease_reference_says_silent(raw_reference: str) -> bool:
+    raw = (raw_reference or "").lower()
+    silence_markers = [
+        "no clause",
+        "no relevant",
+        "no direct",
+        "silent",
+        "contains no provision",
+        "no provision",
+        "does not address",
+        "doesn't address",
+        "lacks",
+        "not mention",
+    ]
+    return any(marker in raw for marker in silence_markers)
+
+
+def format_lease_reference(
+    raw_lease_reference: str,
+    lease_chunks: list,
+    question: str,
+    supporting_notes: str = "",
+) -> str:
+    """
+    Render lease references with actual lease text, never clause numbers alone.
+    """
+    if not lease_chunks:
+        return raw_lease_reference
+
+    selected_chunk, index = _select_lease_chunk(raw_lease_reference, lease_chunks, question)
+    if not selected_chunk:
+        return raw_lease_reference
+
+    heading = _lease_heading(selected_chunk, index)
+    excerpt = _lease_excerpt(getattr(selected_chunk, "text", ""), question)
+    if not excerpt:
+        return raw_lease_reference
+
+    if (
+        _lease_reference_says_silent(raw_lease_reference)
+        or _lease_reference_says_silent(supporting_notes)
+    ):
+        topic = _issue_topic(question)
+        return (
+            f"No clause in this lease directly addresses {topic}. "
+            f"Closest relevant clause — {heading}: '{excerpt}'"
+        )
+
+    return f"{heading}: '{excerpt}'"
+
+
 def fallback_response(reason: str = "") -> RAGResponse:
     """
     Returns a safe, honest response when confidence is LOW
@@ -182,6 +371,22 @@ def retrieval_unavailable_response(reason: str = "") -> RAGResponse:
         confidence=Confidence.LOW,
         conflict_flag=False,
         error_type=f"RETRIEVAL_UNAVAILABLE: {reason}" if reason else "RETRIEVAL_UNAVAILABLE"
+    )
+
+
+def llm_unavailable_response(reason: str = "") -> RAGResponse:
+    """
+    Returns a clear system-status response when the LLM provider cannot answer.
+    This must not look like a legal conclusion.
+    """
+    return RAGResponse(
+        answer="AI credits are not available right now. Please try again after some time.",
+        legal_basis="",
+        lease_reference=None,
+        explanation="The language model could not generate an answer because the provider is temporarily unavailable, rate limited, or out of credits.",
+        confidence=Confidence.LOW,
+        conflict_flag=False,
+        error_type=reason or "LLM_UNAVAILABLE"
     )
 
 
@@ -259,12 +464,14 @@ def run_rag_chain(
     # Stage 4 — Call LLM
     llm_result = call_llm(messages)
     if llm_result["error_type"]:
-        return fallback_response(llm_result["error_type"])
+        return llm_unavailable_response(llm_result["error_type"])
 
     # Stage 5 — Format and return structured response
     parsed = format_response(
         llm_output=llm_result["llm_output"],
-        confidence=context.confidence
+        confidence=context.confidence,
+        lease_chunks=context.lease_chunks,
+        question=question,
     )
 
     session_store.append_turn(

@@ -4,7 +4,11 @@ sys.path.append(".")
 sys.path.append("backend")
 
 from backend.models.schemas import DocType
-from backend.rag.ingest import chunk_text, find_last_law_section_citation_in_text
+from backend.rag.ingest import (
+    chunk_text,
+    find_last_law_section_citation_in_text,
+    looks_like_lease_document,
+)
 
 
 def test_law_section_detection_ignores_inline_cross_references():
@@ -55,3 +59,17 @@ without just or sufficient cause, cut-off water or electricity.
         chunk.chunk_id for chunk in second["chunks"]
     ]
     assert first["chunks"][0].section == "Maharashtra Rent Control Act, 1999, Section 29"
+
+
+def test_lease_document_detection_rejects_unrelated_text():
+    lease_text = """
+    Residential Lease Agreement between the Landlord and Tenant for the premises.
+    The monthly rent and security deposit are payable during the term.
+    """
+    unrelated_text = """
+    Invoice for laptop repair. Itemized parts, service fee, warranty details,
+    payment terms, and customer address are listed below.
+    """
+
+    assert looks_like_lease_document(lease_text)
+    assert not looks_like_lease_document(unrelated_text)

@@ -74,6 +74,9 @@ def test_system_prompt_contains_product_answer_rules():
     assert "LOW confidence must be useful" in SYSTEM_PROMPT
     assert "Do not force a Yes/No opening" in SYSTEM_PROMPT
     assert "specific statutory section" in SYSTEM_PROMPT
+    assert "Never return clause numbers alone" in SYSTEM_PROMPT
+    assert "Always include the relevant lease clause heading/label AND the actual" in SYSTEM_PROMPT
+    assert "Do NOT write only \"Clause 1\"" in SYSTEM_PROMPT
 
 
 def test_lockout_prompt_gets_state_neutral_self_help_guidance():

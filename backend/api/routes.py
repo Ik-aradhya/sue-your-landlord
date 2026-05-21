@@ -122,7 +122,8 @@ def _error_message(error_type: str) -> str:
     """
     messages = {
         "FILE_TOO_LARGE":    "Your file exceeds the 10MB limit. Please upload a smaller file.",
-        "INVALID_FILE_TYPE": "Only PDF and Image files are accepted.",
+        "INVALID_FILE_TYPE": "Please upload your valid lease as a PDF or photo.",
+        "INVALID_LEASE_DOCUMENT": "Please upload your valid lease as a PDF or photo.",
         "NON_TEXT_PDF":      "Your document appears to be scanned. Please upload a text-based document.",
         "PARSE_ERROR":       "We could not read your file. It may be corrupted or OCR processing failed.",
         "EMPTY_TEXT":        "No readable text was found in your file.",

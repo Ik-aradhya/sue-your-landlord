@@ -181,6 +181,55 @@ def validate_file(file: UploadFile) -> dict:
     return {"is_valid": True, "error_type": None}
 
 
+def looks_like_lease_document(text: str) -> bool:
+    """
+    Lightweight content check to avoid indexing unrelated PDFs/photos as leases.
+    """
+    if not text:
+        return False
+
+    normalized = re.sub(r"\s+", " ", text.lower())
+
+    title_markers = [
+        "lease agreement",
+        "rental agreement",
+        "rent agreement",
+        "tenancy agreement",
+        "leave and license",
+        "leave and licence",
+        "leave & license",
+        "leave & licence",
+        "license agreement",
+        "licence agreement",
+        "agreement of lease",
+        "deed of lease",
+        "lease deed",
+        "residential lease",
+        "commercial lease",
+    ]
+    if any(marker in normalized for marker in title_markers):
+        return True
+
+    party_markers = ["landlord", "lessor", "licensor", "owner"]
+    occupant_markers = ["tenant", "lessee", "licensee", "occupant"]
+    money_markers = ["rent", "security deposit", "deposit", "monthly rent"]
+    property_markers = ["premises", "property", "flat", "apartment", "address"]
+    term_markers = ["term", "tenure", "commencement", "expiry", "period"]
+
+    marker_groups = [
+        party_markers,
+        occupant_markers,
+        money_markers,
+        property_markers,
+        term_markers,
+    ]
+    matched_groups = sum(
+        1 for markers in marker_groups if any(marker in normalized for marker in markers)
+    )
+
+    return matched_groups >= 4
+
+
 # =============================================================================
 # TEXT EXTRACTION
 # =============================================================================
@@ -495,6 +544,14 @@ async def run_ingestion_pipeline(
             "session_id": None,
             "chunks_stored": 0,
             "error_type": extracted["error_type"]
+        }
+
+    if doc_type == DocType.LEASE and not looks_like_lease_document(extracted["text"]):
+        return {
+            "success": False,
+            "session_id": None,
+            "chunks_stored": 0,
+            "error_type": "INVALID_LEASE_DOCUMENT"
         }
 
     # STEP 3 — CHUNK TEXT
