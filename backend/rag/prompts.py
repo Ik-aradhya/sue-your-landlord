@@ -18,6 +18,13 @@ RENT_INCREASE_KEYWORDS = (
     "increased",
     "rent hike",
     "hike rent",
+    "pay extra",
+    "extra rent",
+    "extra amount",
+    "extra payment",
+    "extra this month",
+    "additional rent",
+    "additional amount",
     "escalation",
     "rent revision",
     "permitted increase",
@@ -174,11 +181,15 @@ STRICT RULES — follow all without exception
    - Put the most important legal conclusion in the first line of ANSWER.
    - Keep ANSWER to 1-2 sharp sentences. Do not repeat the same point in
      ANSWER and EXPLANATION unless the second mention explains why.
-   - LEGAL BASIS supports the answer; it must not replace the answer.
-   - Do not copy statutory wording as the answer. Translate the retrieved law
-     into a precise conclusion, then cite the section separately.
-   - EXPLANATION should explain why the conclusion follows from the cited law
-     and lease, in plain professional language.
+    - LEGAL BASIS supports the answer; it must not replace the answer.
+    - Do not copy statutory wording as the answer. Translate the retrieved law
+      into a precise conclusion, then cite the section separately.
+    - For landlord rent-increase or extra-charge demands, lead with tenant
+      protection. Do not start ANSWER with "The landlord is entitled..." or
+      "The landlord can...". Prefer: "You do not have to pay an unsupported extra demand..."
+      or "A rent increase is limited to...".
+    - EXPLANATION should explain why the conclusion follows from the cited law
+      and lease, in plain professional language.
    - Lease analysis must be intelligent and contextual: say what the relevant
      clause covers, what it omits, and why that matters. Do not repeatedly write
      "no clause found" when a related clause exists.
@@ -232,8 +243,9 @@ STRICT RULES — follow all without exception
     the user asks.
 
 14. CONSISTENCY ACROSS QUESTION PHRASING
-    If the current question is about rent increase, rent hike, escalation,
-    permitted increase, rent increase notice, or disputing a rent increase,
+    If the current question is about rent increase, rent hike, extra rent,
+    an extra amount demanded by the landlord, escalation, permitted increase,
+    rent increase notice, or disputing a rent increase,
     treat it as the same legal cluster. Reconcile the same set of retrieved
     facts every time:
     - ordinary or annual rent increase / standard rent rule;
@@ -255,6 +267,9 @@ STRICT RULES — follow all without exception
     under the retrieved context. The next step should be tenant-protective and
     document-grounded, e.g. ask the landlord for the cited legal basis or
     dispute an unsupported unilateral increase in writing.
+    For extra rent or extra-payment demands, the ANSWER must start from the
+    tenant's protection against unsupported demands, then explain any permitted
+    increase. Do not lead with landlord entitlement wording.
     Do not write that the law "does not provide a specific percentage or
     procedure" when the retrieved context contains any percentage, cap, formula,
     court mechanism, consent requirement, certificate requirement, or other
@@ -304,6 +319,9 @@ SELF-CHECK — before finalising your response, verify:
   • The LEGAL BASIS section number must match the statute text used in
     EXPLANATION. If the section text and explanation discuss different legal
     issues, fix the citation or lower confidence to LOW.
+  • LEGAL BASIS should include the Act, section number, and the section title
+    when that title appears in the provided legal context. Keep it to one
+    compact citation line, not a paragraph.
   • If the lease clause present addresses the BASE TOPIC but NOT the specific
     issue asked, say the lease is silent on that issue. Then answer only from
     cited law if the law directly answers it.
@@ -338,8 +356,8 @@ ANSWER:
 [Yes/No/Partially/Likely first when applicable, else the direct conclusion — 1-2 short sentences, no hedging]
 
 LEGAL BASIS:
-[Exact Citation labels from the provided legal context only.
- If multiple categories apply, list the exact citation for each category.]
+[Exact Citation labels from the provided legal context only, plus the section
+ title when it appears in that context. Keep each citation compact.]
 
 LEASE REFERENCE:
 [Clause heading/label plus relevant lease text.
@@ -582,6 +600,13 @@ def build_retrieval_query(question: str, history: Optional[list[dict]] = None) -
         "increase the rent": rent_increase_canonical_hint,
         "rent increase":     rent_increase_canonical_hint,
         "increase rent":     rent_increase_canonical_hint,
+        "pay extra":         rent_increase_canonical_hint,
+        "extra rent":        rent_increase_canonical_hint,
+        "extra amount":      rent_increase_canonical_hint,
+        "extra payment":     rent_increase_canonical_hint,
+        "extra this month":  rent_increase_canonical_hint,
+        "additional rent":   rent_increase_canonical_hint,
+        "additional amount": rent_increase_canonical_hint,
         "rent hike":         rent_increase_canonical_hint,
         "hike rent":         rent_increase_canonical_hint,
         "rent revision":     rent_increase_canonical_hint,

@@ -33,6 +33,7 @@ def test_rent_increase_phrasings_share_canonical_retrieval_hint():
     amount_query = build_retrieval_query("How much can rent be increased per year?")
     notice_query = build_retrieval_query("What notice is required for a rent increase?")
     dispute_query = build_retrieval_query("Can I dispute a rent increase?")
+    extra_query = build_retrieval_query("My landlord is asking to pay extra this month")
 
     canonical_terms = [
         "ordinary rent increase",
@@ -45,6 +46,7 @@ def test_rent_increase_phrasings_share_canonical_retrieval_hint():
         assert term in amount_query
         assert term in notice_query
         assert term in dispute_query
+        assert term in extra_query
 
 
 def test_rent_increase_prompt_gets_issue_guidance():
@@ -74,6 +76,9 @@ def test_system_prompt_contains_product_answer_rules():
     assert "LOW confidence must be useful" in SYSTEM_PROMPT
     assert "Do not force a Yes/No opening" in SYSTEM_PROMPT
     assert "specific statutory section" in SYSTEM_PROMPT
+    assert "section title" in SYSTEM_PROMPT
+    assert "lead with tenant" in SYSTEM_PROMPT
+    assert "unsupported extra demand" in SYSTEM_PROMPT
     assert "Never return clause numbers alone" in SYSTEM_PROMPT
     assert "Always include the relevant lease clause heading/label AND the actual" in SYSTEM_PROMPT
     assert "Do NOT write only \"Clause 1\"" in SYSTEM_PROMPT
@@ -135,6 +140,14 @@ def test_rent_increase_uses_multi_query_retrieval():
     assert any("ordinary annual rent increase" in query for query in queries)
     assert any("determine amount permitted increase" in query for query in queries)
     assert any("special additions improvements" in query for query in queries)
+
+
+def test_extra_payment_uses_rent_increase_multi_query_retrieval():
+    queries = build_retrieval_queries("My landlord is asking to pay extra this month")
+
+    assert len(queries) == 4
+    assert any("ordinary annual rent increase" in query for query in queries)
+    assert any("determine amount permitted increase" in query for query in queries)
 
 
 def test_non_rent_issue_uses_single_retrieval_query():
