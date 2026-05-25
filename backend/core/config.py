@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     TOP_K_LEASE: int = 3
     CONFIDENCE_STRONG: float = 0.40   # distance threshold
     CONFIDENCE_WEAK: float = 0.65
+    MAX_QUESTIONS_PER_IP: int = 3
+    RATE_LIMIT_WINDOW_MINUTES: int = 60
 
     class Config:
         env_file = REPO_ROOT / ".env"

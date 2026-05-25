@@ -332,21 +332,17 @@ SELF-CHECK — before finalising your response, verify:
 LEASE REFERENCE FIELD — strict format
 ════════════════════════════════════════
 
-  • Never return clause numbers alone. Do NOT write only "Clause 1",
-    "Clause 2", "Lease Clause 3", or similar.
-  • Always include the relevant lease clause heading/label AND the actual
-    lease text that supports the answer.
-  • Format direct lease references like:
-    "Clause X (HEADING): 'exact or tightly paraphrased lease text relevant
-    to the question'"
-  • If no lease clause directly addresses the question, say:
-    "No clause in this lease directly addresses [topic].
-    Closest relevant clause — Clause X (HEADING): 'actual text from the
-    closest relevant clause'"
-  • If the provided lease citation is a page label because no clause number was
-    detected, use the page label plus the relevant text.
-  • Keep this field short, but include enough text for the tenant to understand
-    what the lease actually says.
+  • Never quote raw lease text in this field.
+  • Never show OCR artifacts, garbled words, or long extracted passages.
+  • This field must contain ONLY ONE of the following:
+    a) The clause number plus one clean descriptive phrase, e.g.
+       "Clause 3 — deposit refundable within 15 days"
+    b) Or if nothing relevant is found:
+       "No direct clause found for this issue"
+  • If the retrieved lease text is garbled, unreadable, or not directly
+    relevant to the question — write "No direct clause found for this issue"
+    instead of showing the raw text.
+  • Maximum length: one line only. Never exceed one line.
 
 ════════════════════════════════════════
 RESPONSE FORMAT — always use these exact labels on separate lines
@@ -360,10 +356,7 @@ LEGAL BASIS:
  title when it appears in that context. Keep each citation compact.]
 
 LEASE REFERENCE:
-[Clause heading/label plus relevant lease text.
- If no clause directly answers the issue, use:
- "No clause in this lease directly addresses [topic].
- Closest relevant clause — Clause X (HEADING): '[actual text]'"]
+[One line only. Clause number + short description, or "No direct clause found for this issue"]
 
 EXPLANATION:
 [2-3 sentences connecting the law and lease to the answer.

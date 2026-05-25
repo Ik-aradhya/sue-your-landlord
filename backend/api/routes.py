@@ -1,10 +1,11 @@
 import uuid
 import asyncio
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request
 from rag.ingest import run_ingestion_pipeline
 from rag.chain import run_rag_chain
 from core.config import settings
 from core.database import cleanup_expired_lease_namespaces, delete_lease_namespace
+from core.rate_limiter import rate_limiter
 from models.schemas import (
     DocType, ChatRequest, ChatResponse, UploadResponse
 )
@@ -66,12 +67,28 @@ async def upload_lease(
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, raw_request: Request):
     """
     Receives a question + session_id + state.
     Runs the full RAG chain.
     Returns a structured legal answer with citations.
     """
+
+    # ── Per-IP rate limit ──────────────────────────────
+    client_ip = (
+        raw_request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        or raw_request.client.host
+    )
+    if not rate_limiter.is_allowed(client_ip):
+        retry = rate_limiter.retry_after_seconds(client_ip)
+        mins = max(1, retry // 60)
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"You have reached the limit of {settings.MAX_QUESTIONS_PER_IP} "
+                f"questions. Please try again after {mins} minute{'s' if mins != 1 else ''}."
+            ),
+        )
 
     # Validate question
     if not request.question or len(request.question.strip()) < 5:
