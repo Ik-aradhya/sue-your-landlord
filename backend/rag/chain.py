@@ -1,5 +1,7 @@
 import os
 import re
+import time
+from threading import RLock
 from typing import Optional
 from langchain_groq import ChatGroq
 from core.config import settings
@@ -8,13 +10,121 @@ from models.schemas import RAGResponse, Confidence
 from rag.prompts import build_prompt, build_retrieval_queries
 from rag.retriever import run_retrieval
 
-# Initialise LLM once at module level
-llm = ChatGroq(
-    api_key=settings.GROQ_API_KEY,
-    model=settings.LLM_MODEL,
-    temperature=0,
-    max_tokens=1000
-)
+GROQ_KEY_COUNT = 6
+GROQ_KEY_RESET_SECONDS = 60 * 60
+
+
+class AllKeysExhaustedException(Exception):
+    """Raised when every configured Groq key is cooling down or unavailable."""
+
+
+def _is_credit_or_rate_limit_error(error_msg: str) -> bool:
+    """Detect provider errors that should trigger key rotation."""
+    error_lower = error_msg.lower()
+    credit_markers = [
+        "rate_limit",
+        "rate limit",
+        "429",
+        "too many requests",
+        "quota",
+        "credit",
+        "billing",
+        "insufficient",
+        "resource exhausted",
+    ]
+    return any(marker in error_lower for marker in credit_markers)
+
+
+class GroqKeyManager:
+    """
+    Owns Groq clients and rotates away from keys that hit hourly limits.
+
+    Key indices are zero-based internally:
+    GROQ_KEY_1 -> index 0, GROQ_KEY_2 -> index 1, and so on.
+    """
+
+    def __init__(self):
+        self.lock = RLock()
+        self.current_index = 0
+        self.exhausted_indices: set[int] = set()
+        self.exhausted_at: dict[int, float] = {}
+
+        # Read all six configured Groq key slots once at startup.
+        self.keys = [
+            (os.getenv(f"GROQ_KEY_{index}") or getattr(settings, f"GROQ_KEY_{index}", None) or "").strip()
+            for index in range(1, GROQ_KEY_COUNT + 1)
+        ]
+
+        # Create one ChatGroq instance per configured key. Empty slots stay as
+        # None so a missing env var cannot crash the app during import.
+        self.llms: list[ChatGroq | None] = [
+            ChatGroq(
+                api_key=api_key,
+                model=settings.LLM_MODEL,
+                temperature=0,
+                max_tokens=1000,
+            )
+            if api_key else None
+            for api_key in self.keys
+        ]
+
+        # Backward compatibility for local/dev deployments that still only have
+        # the old GROQ_API_KEY configured.
+        legacy_key = (settings.GROQ_API_KEY or "").strip()
+        if not any(self.llms) and legacy_key:
+            self.keys[0] = legacy_key
+            self.llms[0] = ChatGroq(
+                api_key=legacy_key,
+                model=settings.LLM_MODEL,
+                temperature=0,
+                max_tokens=1000,
+            )
+
+    def _reset_expired_keys(self) -> None:
+        """Make an exhausted key available again after Groq's hourly reset."""
+        now = time.time()
+        expired_indices = [
+            index
+            for index, exhausted_time in self.exhausted_at.items()
+            if now - exhausted_time >= GROQ_KEY_RESET_SECONDS
+        ]
+        for index in expired_indices:
+            self.exhausted_indices.discard(index)
+            self.exhausted_at.pop(index, None)
+
+    @property
+    def active_llm(self) -> ChatGroq:
+        """Return the current usable Groq client, rotating if needed."""
+        with self.lock:
+            self._reset_expired_keys()
+            if not self.llms[self.current_index] or self.current_index in self.exhausted_indices:
+                self.current_index = self.get_next_available()
+
+            llm = self.llms[self.current_index]
+            if not llm:
+                raise AllKeysExhaustedException("No configured Groq keys are available.")
+            return llm
+
+    def mark_exhausted(self, index: int) -> None:
+        """Mark a key as exhausted and record when its cooldown started."""
+        with self.lock:
+            self.exhausted_indices.add(index)
+            self.exhausted_at[index] = time.time()
+
+    def get_next_available(self) -> int:
+        """Loop through the configured keys and return the next available index."""
+        with self.lock:
+            self._reset_expired_keys()
+            for offset in range(GROQ_KEY_COUNT):
+                index = (self.current_index + offset) % GROQ_KEY_COUNT
+                if self.llms[index] and index not in self.exhausted_indices:
+                    self.current_index = index
+                    return index
+            raise AllKeysExhaustedException("All Groq API keys are exhausted.")
+
+
+# Initialise all Groq clients once at module level.
+groq_key_manager = GroqKeyManager()
 
 def call_llm(messages: list[dict]) -> dict:
     """
@@ -26,29 +136,71 @@ def call_llm(messages: list[dict]) -> dict:
     Guarantee: does not interpret or format the response.
                only handles communication with the API.
     """
-    try:
-        response = llm.invoke(messages)
+    last_credit_error = False
+
+    # Try each configured key at most once for this prompt. This avoids exposing
+    # a token-limit failure to the user while still bounding the retry loop.
+    for _ in range(GROQ_KEY_COUNT):
+        try:
+            with groq_key_manager.lock:
+                active_llm = groq_key_manager.active_llm
+                current_index = groq_key_manager.current_index
+            response = active_llm.invoke(messages)
+            return {
+                "llm_output": response.content,
+                "error_type": None
+            }
+        except AllKeysExhaustedException:
+            return {"llm_output": None, "error_type": "all_keys_exhausted"}
+        except Exception as e:
+            error_msg = str(e)
+            if _is_credit_or_rate_limit_error(error_msg):
+                last_credit_error = True
+                groq_key_manager.mark_exhausted(current_index)
+                try:
+                    groq_key_manager.get_next_available()
+                except AllKeysExhaustedException:
+                    return {"llm_output": None, "error_type": "all_keys_exhausted"}
+                continue
+            return {"llm_output": None, "error_type": f"LLM_ERROR: {error_msg}"}
+
+    if last_credit_error:
+        return {"llm_output": None, "error_type": "LLM_CREDITS_UNAVAILABLE"}
+    return {"llm_output": None, "error_type": "all_keys_exhausted"}
+
+
+def get_key_status() -> dict:
+    """Return operational status for Groq key rotation."""
+    with groq_key_manager.lock:
+        groq_key_manager._reset_expired_keys()
+        now = time.time()
+        exhausted_keys = sorted(groq_key_manager.exhausted_indices)
+        available_keys = sum(
+            1
+            for index, llm_instance in enumerate(groq_key_manager.llms)
+            if llm_instance and index not in groq_key_manager.exhausted_indices
+        )
+
+        if groq_key_manager.exhausted_at:
+            earliest_reset_seconds = min(
+                max(0, GROQ_KEY_RESET_SECONDS - (now - exhausted_time))
+                for exhausted_time in groq_key_manager.exhausted_at.values()
+            )
+            next_reset_in_minutes = round(earliest_reset_seconds / 60, 2)
+        else:
+            next_reset_in_minutes = None
+
+        try:
+            active_key_index = groq_key_manager.get_next_available()
+        except AllKeysExhaustedException:
+            active_key_index = -1
+
         return {
-            "llm_output": response.content,
-            "error_type": None
+            "active_key_index": active_key_index,
+            "exhausted_keys": exhausted_keys,
+            "available_keys": available_keys,
+            "next_reset_in_minutes": next_reset_in_minutes,
         }
-    except Exception as e:
-        error_msg = str(e)
-        error_lower = error_msg.lower()
-        credit_markers = [
-            "rate_limit",
-            "rate limit",
-            "429",
-            "too many requests",
-            "quota",
-            "credit",
-            "billing",
-            "insufficient",
-            "resource exhausted",
-        ]
-        if any(marker in error_lower for marker in credit_markers):
-            return {"llm_output": None, "error_type": "LLM_CREDITS_UNAVAILABLE"}
-        return {"llm_output": None, "error_type": f"LLM_ERROR: {error_msg}"}
 
 
 def format_response(

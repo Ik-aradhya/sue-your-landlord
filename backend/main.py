@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
-from api.routes import router
+from api.routes import router, status_router
 
 app = FastAPI(
     title="Sue Your Landlord",
@@ -20,6 +20,7 @@ app.add_middleware(
 
 # Register routes
 app.include_router(router, prefix="/api/v1")
+app.include_router(status_router, prefix="/api")
 
 @app.get("/health")
 async def health():

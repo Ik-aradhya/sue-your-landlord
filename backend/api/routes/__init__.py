@@ -9,6 +9,7 @@ from core.rate_limiter import rate_limiter
 from models.schemas import (
     DocType, ChatRequest, ChatResponse, UploadResponse
 )
+from .status import status_router
 
 router = APIRouter()
 

@@ -6,7 +6,13 @@ from pydantic_settings import BaseSettings
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 class Settings(BaseSettings):
-    GROQ_API_KEY: str
+    GROQ_API_KEY: Optional[str] = None
+    GROQ_KEY_1: Optional[str] = None
+    GROQ_KEY_2: Optional[str] = None
+    GROQ_KEY_3: Optional[str] = None
+    GROQ_KEY_4: Optional[str] = None
+    GROQ_KEY_5: Optional[str] = None
+    GROQ_KEY_6: Optional[str] = None
     PINECONE_API_KEY: str
     PINECONE_INDEX_NAME: str = "sue-your-landlord"
     HF_TOKEN: Optional[str] = None
@@ -19,7 +25,7 @@ class Settings(BaseSettings):
     TOP_K_LEASE: int = 3
     CONFIDENCE_STRONG: float = 0.40   # distance threshold
     CONFIDENCE_WEAK: float = 0.65
-    MAX_QUESTIONS_PER_IP: int = 3
+    MAX_QUESTIONS_PER_IP: int = 5
     RATE_LIMIT_WINDOW_MINUTES: int = 60
 
     class Config:
