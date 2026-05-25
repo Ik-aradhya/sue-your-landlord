@@ -334,15 +334,16 @@ LEASE REFERENCE FIELD — strict format
 
   • Never quote raw lease text in this field.
   • Never show OCR artifacts, garbled words, or long extracted passages.
-  • This field must contain ONLY ONE of the following:
-    a) The clause number plus one clean descriptive phrase, e.g.
+  • The LEASE REFERENCE field must only contain ONE of the following:
+    a) The clause number if found, e.g. "Clause 3"
+    b) The clause number plus one clean descriptive phrase, e.g.
        "Clause 3 — deposit refundable within 15 days"
-    b) Or if nothing relevant is found:
+    c) Or if nothing relevant is found:
        "No direct clause found for this issue"
   • If the retrieved lease text is garbled, unreadable, or not directly
     relevant to the question — write "No direct clause found for this issue"
     instead of showing the raw text.
-  • Maximum length: one line only. Never exceed one line.
+  • Maximum length of this field: one line only.
 
 ════════════════════════════════════════
 RESPONSE FORMAT — always use these exact labels on separate lines
