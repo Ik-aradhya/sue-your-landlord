@@ -336,9 +336,7 @@ MEDIUM
 
     assert response.legal_basis == "Lease Document - Security Deposit clause"
     assert "Section 11" not in response.legal_basis
-    assert response.lease_reference.startswith("Security Deposit:")
-    assert "Rs. 1,50,000/-" in response.lease_reference
-    assert "refunded without interest" in response.lease_reference
+    assert response.lease_reference == "Security Deposit"
 
 
 def test_maintenance_question_uses_lease_basis_when_statute_is_generic_rent():
@@ -411,9 +409,7 @@ HIGH
     assert "Section 10" not in response.legal_basis
     assert "Section 10" not in response.explanation
     assert "Rent Control Act" not in response.explanation
-    assert response.lease_reference.startswith("Maintenance:")
-    assert "monthly maintenance charges" in response.lease_reference
-    assert "unpaid dues" not in response.lease_reference
+    assert response.lease_reference == "Maintenance"
 
 
 def test_format_response_rewrites_clause_number_to_lease_text():
@@ -456,9 +452,7 @@ HIGH
         question="Is my security deposit protected?",
     )
 
-    assert response.lease_reference.startswith("Clause 3 - SECURITY DEPOSIT:")
-    assert "shall be refunded without interest" in response.lease_reference
-    assert response.lease_reference != "Clause 3"
+    assert response.lease_reference == "Clause 3 — Security Deposit"
 
 
 def test_format_response_quotes_closest_clause_when_lease_is_silent():
@@ -500,9 +494,7 @@ HIGH
         question="Can my landlord increase rent?",
     )
 
-    assert response.lease_reference.startswith("No direct rent increase clause.")
-    assert "Closest lease text:" in response.lease_reference
-    assert "monthly rent of Rs. 38,000" in response.lease_reference
+    assert response.lease_reference == "No direct clause found for this issue"
 
 
 def test_extra_payment_question_uses_rent_increase_topic_for_lease_silence():
@@ -543,9 +535,7 @@ MEDIUM
         question="My landlord is asking to pay extra this month",
     )
 
-    assert response.lease_reference.startswith("No direct rent increase clause.")
-    assert "asking extra month" not in response.lease_reference
-    assert not response.lease_reference.endswith("i.e")
+    assert response.lease_reference == "No direct clause found for this issue"
 
 
 def test_additional_advance_rent_question_has_clean_lease_silence_topic():
@@ -593,9 +583,7 @@ HIGH
         "specifies a monthly rent payment. The landlord's demand for additional "
         "advance rent is not supported by the lease or the retrieved legal context."
     )
-    assert response.lease_reference.startswith("No direct additional advance rent clause.")
-    assert "demanding months advance" not in response.lease_reference
-    assert "Rent for the first month i.e" in response.lease_reference
+    assert response.lease_reference == "No direct clause found for this issue"
 
 
 def test_unsupported_advance_rent_statute_is_removed_from_legal_basis():
@@ -696,10 +684,6 @@ HIGH
         question="How much can rent be increased per year?",
     )
 
-    assert response.lease_reference == (
-        "No direct rent increase clause. Closest lease text: "
-        "Monthly Rent of Rs. 38,000 (Rupees Thirty-Eight Thousand only) "
-        "is payable by the 5th day of each month"
-    )
+    assert response.lease_reference == "No direct clause found for this issue"
     assert "Lease Document" not in response.lease_reference
     assert "RENT:" not in response.lease_reference

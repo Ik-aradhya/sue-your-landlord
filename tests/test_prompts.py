@@ -79,9 +79,9 @@ def test_system_prompt_contains_product_answer_rules():
     assert "section title" in SYSTEM_PROMPT
     assert "lead with tenant" in SYSTEM_PROMPT
     assert "unsupported extra demand" in SYSTEM_PROMPT
-    assert "Never return clause numbers alone" in SYSTEM_PROMPT
-    assert "Always include the relevant lease clause heading/label AND the actual" in SYSTEM_PROMPT
-    assert "Do NOT write only \"Clause 1\"" in SYSTEM_PROMPT
+    assert "Never quote raw lease text" in SYSTEM_PROMPT
+    assert "Never show OCR artifacts" in SYSTEM_PROMPT
+    assert "No direct clause found for this issue" in SYSTEM_PROMPT
 
 
 def test_lockout_prompt_gets_state_neutral_self_help_guidance():

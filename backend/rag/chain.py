@@ -881,6 +881,62 @@ def _augment_lease_excerpt_from_related_chunks(
     return combined
 
 
+def _is_garbled(text: str) -> bool:
+    """Detect OCR artifacts and garbled text that should never be shown to users."""
+    if not text or len(text) < 10:
+        return True
+    words = text.split()
+    if not words:
+        return True
+    # Count words that look like real English (at least 2 chars, mostly alpha)
+    real_words = sum(
+        1 for w in words
+        if len(w) >= 2 and sum(c.isalpha() for c in w) / max(len(w), 1) > 0.6
+    )
+    # If fewer than 60% of words look real, it's garbled
+    if real_words / max(len(words), 1) < 0.6:
+        return True
+    # Check for common OCR-garble patterns
+    garble_patterns = [
+        r'[a-z]{2,}[A-Z][a-z]',   # random mid-word caps ("terminatIe")
+        r'[bcdfghjklmnpqrstvwxz]{5,}',  # consonant clusters
+    ]
+    garble_hits = sum(
+        1 for pat in garble_patterns
+        if re.search(pat, text)
+    )
+    return garble_hits >= 2
+
+
+def _one_line_description(heading: str, chunk, question: str) -> str:
+    """Build a short clean description from the clause heading/label."""
+    # Try to extract a clause number from the heading
+    clause_match = re.search(
+        r'\b(?:Clause|Article)\s+(\d+[A-Za-z]?)\b', heading or "", re.IGNORECASE
+    )
+    clause_label = f"Clause {clause_match.group(1)}" if clause_match else ""
+
+    # Try to get a clean topic label from the heading or chunk text
+    topic_label = ""
+    heading_clean = re.sub(
+        r'(?:Clause|Article)\s+\d+[A-Za-z]?\s*[-:.]\s*', '', heading or '', flags=re.IGNORECASE
+    ).strip()
+    if heading_clean and not _is_generic_lease_heading(heading_clean):
+        topic_label = heading_clean.rstrip(" :.-")
+
+    if not topic_label:
+        topic_label = _lease_clause_label_from_text(getattr(chunk, "text", "") or "")
+
+    # Build one clean line
+    if clause_label and topic_label:
+        return f"{clause_label} — {topic_label}"
+    if clause_label:
+        return clause_label
+    if topic_label:
+        return topic_label
+    return ""
+
+
 def format_lease_reference(
     raw_lease_reference: str,
     lease_chunks: list,
@@ -888,41 +944,38 @@ def format_lease_reference(
     supporting_notes: str = "",
 ) -> str:
     """
-    Render lease references with actual lease text, never clause numbers alone.
+    Produce a clean one-line lease reference. Never show raw lease text,
+    OCR artifacts, or long extracted passages.
+
+    Output is one of:
+      - "Clause X — short description"
+      - "No direct clause found for this issue"
     """
+    NO_CLAUSE = "No direct clause found for this issue"
+
     if not lease_chunks:
-        return raw_lease_reference
+        return NO_CLAUSE
+
+    # Check if the LLM already said "no clause" / "silent"
+    is_silent = _lease_reference_says_silent(raw_lease_reference) or \
+                _lease_reference_says_silent(supporting_notes)
 
     selected_chunk, index = _select_lease_chunk(raw_lease_reference, lease_chunks, question)
     if not selected_chunk:
-        return raw_lease_reference
+        return NO_CLAUSE
+
+    # Check if the chunk text is garbled OCR
+    chunk_text = getattr(selected_chunk, "text", "") or ""
+    if _is_garbled(chunk_text):
+        return NO_CLAUSE
 
     heading = _lease_heading(selected_chunk, index)
-    excerpt = _clean_lease_excerpt_for_display(
-        _lease_excerpt(getattr(selected_chunk, "text", ""), question)
-    )
-    excerpt = _augment_lease_excerpt_from_related_chunks(
-        excerpt,
-        selected_chunk,
-        lease_chunks,
-        question,
-    )
-    if not excerpt:
-        return raw_lease_reference
+    description = _one_line_description(heading, selected_chunk, question)
 
-    if (
-        _lease_reference_says_silent(raw_lease_reference)
-        or _lease_reference_says_silent(supporting_notes)
-    ):
-        topic = _issue_topic(question)
-        return f"No direct {topic} clause. Closest lease text: {excerpt}"
+    if is_silent or not description:
+        return NO_CLAUSE
 
-    if _is_generic_lease_heading(heading):
-        label = _lease_clause_label_from_text(getattr(selected_chunk, "text", "") or "")
-        if label:
-            return f"{label}: {excerpt}"
-        return f"Lease text: {excerpt}"
-    return f"{heading}: {excerpt}"
+    return description
 
 
 def fallback_response(reason: str = "") -> RAGResponse:
